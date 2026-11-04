@@ -1,0 +1,2 @@
+# Project manifests bind file bytes with SHA-256. Preserve them on checkout.
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

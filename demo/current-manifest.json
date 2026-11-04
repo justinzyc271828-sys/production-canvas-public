@@ -1,0 +1,16 @@
+{
+  "active_s01_s02_revision": {
+    "status": "SAMPLE",
+    "seconds": 4,
+    "video": {"path":"media/opening.mp4"},
+    "review_markers":[{"label":"中点","seconds":2}],
+    "cartoon_original_audio_4k":{"path":"media/sequence.mp4"}
+  },
+  "active_s03_storyboard": {
+    "status": "SAMPLE",
+    "preview": {"path":"media/sequence.mp4"},
+    "editable_project":{"path":"edit/sample.kdenlive"},
+    "reader":"sample-storyboard.md",
+    "audio_revision":{"master":{"path":"media/tone.wav"}}
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "projects": {
+    "example-film": {
+      "title": "Example Film",
+      "root": "C:/path/to/your/film",
+      "manifest": "project.json"
+    }
+  },
+  "python": "C:/path/to/comfy-mcp-client/Scripts/python.exe",
+  "kdenlive": {
+    "command": "C:/path/to/kdenlive-mcp/Scripts/python.exe",
+    "args": ["C:/path/to/kdenlive-mcp/server.py"]
+  },
+  "comfy": {
+    "command": "C:/path/to/Scripts/comfy-mcp.exe",
+    "cwd": "C:/path/to/ComfyUI/app",
+    "env": {
+      "COMFY_BIN": "C:/path/to/Scripts/comfy.exe",
+      "COMFY_NO_TELEMETRY": "1",
+      "DO_NOT_TRACK": "1",
+      "PYTHONUTF8": "1"
+    }
+  }
+}

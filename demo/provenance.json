@@ -1,0 +1,11 @@
+{
+  "generator": "scripts/build-demo.cjs",
+  "fps": 24,
+  "frames": 720,
+  "width": 640,
+  "height": 360,
+  "picture": "Original rectangle and bitmap-glyph drawing",
+  "audio": "Original generated sine tones",
+  "thirdPartyMedia": [],
+  "licensing": "Original demo media are covered by the repository Production Canvas Source License 1.0. Third-party software retains its own licenses."
+}

@@ -1,0 +1,253 @@
+dialog { width: min(520px,100%); height: 100%; max-height: 100%; max-width: 100%; margin: 0 0 0 auto; padding: 0; border: 0; border-left: 1px solid var(--line); color: var(--ink); background: var(--surface) }
+dialog::backdrop { background: #12161350 }
+.dialog-shell { height: 100%; display: grid; grid-template-rows: auto minmax(0,1fr) }
+.dialog-shell > header { border-bottom: 1px solid var(--line); padding: 12px 16px }
+.dialog-content { overflow: auto; padding: 16px }
+.form-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px }
+form label { display: block; margin: 7px 0 }
+form input, form select, form textarea { display: block; width: 100%; margin-top: 4px }
+form .hint { margin: 8px 0 }
+textarea { resize: vertical }
+.assets, .items { display: grid; gap: 7px; margin-top: 12px }
+.assets button { text-align: left }
+.item { border-bottom: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere }
+.item > * + * { margin-top: 5px }
+.item img { width: min(100%,210px) }
+.reference-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px }
+.reference-grid img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: contain }
+summary { cursor: pointer; font-weight: 650 }
+pre, #bindings { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted) }
+.jobs-header { margin-top: 20px }
+
+:root {
+  color-scheme: dark;
+  --paper: #0f0f0f;
+  --surface: #171717;
+  --ink: #ededed;
+  --muted: #aaa;
+  --line: #2a2a2a;
+  --hover: #303030;
+  --accent: #ddd;
+  --head: 44px;
+  --cursor-color: #f0544c;
+}
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif }
+h1, h2, h3, h4, p { margin: 0 }
+h2, h3 { font-size: 16px; font-weight: 600 }
+h4 { font-size: 13px; font-weight: 600 }
+button, input, select, textarea { font: inherit; color: inherit; background: #1d1d1d; border: 1px solid #393939; border-radius: 5px; padding: 4px 9px; min-height: 28px }
+button { cursor: pointer }
+button:hover { background: var(--hover) }
+button:disabled { opacity: .48; cursor: default }
+button[aria-pressed=true] { background: #333; color: #fff }
+:focus-visible { outline: 2px solid #e5e5e5; outline-offset: -2px }
+.primary, .primary[aria-pressed=true] { background: #ededed; color: #111; border-color: #ededed; font-weight: 600 }
+.primary:hover { background: #cfcfcf }
+a { color: var(--accent); text-underline-offset: 3px }
+.hint, small { color: var(--muted); font-size: 12px }
+.row, .section-head { display: flex; align-items: center; gap: 8px }
+.section-head { justify-content: space-between }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
+main { height: 100dvh; overflow: hidden }
+#workspace { height: 100%; display: grid; grid-template-rows: var(--head) minmax(0,1fr) var(--timeline-height); --timeline-height: clamp(260px,37.5vh,380px) }
+#workspace[data-timeline=collapsed] { --timeline-height: 136px }
+#workspace[data-timeline=expanded] { --timeline-height: min(clamp(400px,57vh,600px),calc(100vh - 205px)) }
+.toolbar { background: #1a1a1a; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; min-width: 0 }
+.toolbar nav, .control-group { display: flex; align-items: center; gap: 2px; background: #111; border: 1px solid #333; border-radius: 6px; padding: 2px; white-space: nowrap }
+.toolbar nav button, .control-group button { border: 0; background: transparent; min-height: 24px; padding: 3px 8px }
+.toolbar nav button:hover, .control-group button:hover { background: #272727 }
+.toolbar nav button[aria-pressed=true], .control-group button[aria-pressed=true] { background: #333 }
+.project-group { display: flex; align-items: center; min-width: 0; gap: 7px; white-space: nowrap }
+.brand, .slash { color: #aaa; flex: none }
+#project { background: transparent; border-color: transparent; font-weight: 600; max-width: 230px }
+#review-version { font-weight: 600; background: #141414; max-width: 180px }
+#film-summary { overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums }
+#return-review { display: flex; align-items: center; gap: 7px }
+#return-frame { width: 32px; height: 18px; border-radius: 2px }
+body[data-view=comfy] #workspace { grid-template-rows: var(--head) 40px minmax(0,1fr) }
+body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
+#comfy-status { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 0 16px; color: #ccc; border-bottom: 1px solid var(--line); background: #171717 }
+#graph-info { overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+.screen { display: grid; grid-template-columns: minmax(0,1fr) 320px; min-height: 0; position: relative }
+.monitor { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0,1fr) 44px auto; padding: 8px 16px; background: #0f0f0f }
+#player { min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; container-type: size }
+#player video, #player img { display: block; width: min(100cqw,177.7778cqh); height: min(100cqh,56.25cqw); object-fit: contain; background: #000 }
+#player audio { width: 85% }
+#player:not([data-still=""])::after { content: attr(data-still); position: absolute; top: 10px; left: max(10px,calc((100cqw - 177.7778cqh) / 2 + 10px)); padding: 3px 7px; border: 1px dashed #aaa; border-radius: 4px; background: #151515e8; font-size: 12px; pointer-events: none }
+.player-bar { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; min-width: 0 }
+.clock { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; font-variant-numeric: tabular-nums; color: #aaa; font-size: 12px }
+.clock strong { color: var(--ink); font-size: 18px }
+.transport, .player-actions { display: flex; gap: 4px; align-items: center; white-space: nowrap }
+.player-actions { justify-content: flex-end }
+.transport button:not(.primary), #speed, #mute { background: transparent; border-color: transparent }
+.transport button:hover, #speed:hover, #mute:hover { background: #282828 }
+#play-toggle { width: 38px; height: 34px }
+#inspect-toggle { display: none }
+.inspector { background: #171717; border-left: 1px solid var(--line); overflow: auto; min-height: 0; min-width: 0; padding: 14px 16px }
+#inspector > * { margin: 6px 0; overflow-wrap: anywhere }
+#inspector h4 { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line) }
+#inspector .clip-title { font-size: 19px }
+#inspector .clip-range { font-variant-numeric: tabular-nums; margin-top: 12px }
+.still-status, .chip { display: inline-block; font-size: 12px; padding: 2px 7px; border: 1px solid #666; border-radius: 4px }
+.still-status { border-style: dashed }
+.inspector-still { display: block; width: 132px; max-width: 100%; aspect-ratio: 16/9; object-fit: contain }
+.quick-note input { flex: 1; min-width: 0; margin: 0 }
+.quick-note label { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.quick-note { padding-bottom: 3px }
+.quick-note button { white-space: nowrap }
+.quick-note .draft-frame-mismatch { color: #ffd080; white-space: normal }
+.completion-strip { display: flex; gap: 2px; height: 8px }
+.completion-strip span { flex: 1; background: #737373; border-radius: 1px }
+.completion-strip .strip-still { background: repeating-linear-gradient(135deg,#949494 0 1px,#252525 1px 4px) }
+.pending-shot, .note-entry { display: flex; gap: 8px; width: 100%; min-width: 0; align-items: center; text-align: left; border: 0; background: transparent }
+.pending-shot strong { width: 34px }
+.pending-shot strong::before { content: '▧'; margin-right: 4px; color: #aaa }
+.pending-shot span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+.pending-shot time { font-variant-numeric: tabular-nums; color: #aaa }
+.track-summary { color: #ccc; font-size: 12px }
+.inspector-tools { flex-wrap: wrap; margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line) }
+#markers { flex-wrap: wrap }
+.notice { color: #bbb; font-size: 12px; padding: 7px 10px }
+#status { position: absolute; bottom: 5px; right: 10px; z-index: 12; background: #222 }
+#workspace:not([hidden]) + #status:not([data-error=true]) { position: absolute; clip-path: inset(50%); pointer-events: none }
+.notice[data-error=true] { color: #ffd9d4; background: #452521 }
+.timeline { --label-width: 104px; background: #161616; border-top: 1px solid #2a2a2a; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
+.timeline-tools { height: 35px; padding: 0 12px; display: flex; align-items: center; gap: 6px; flex: none; border-bottom: 1px solid #242424; white-space: nowrap }
+.timeline-tools > button { border-color: transparent; background: transparent; min-height: 24px; padding: 0 6px }
+.timeline-tools > button:hover { background: #333 }
+.timeline-tools .spacer { flex: 1 }
+#timeline-range { font-variant-numeric: tabular-nums }
+#track-filter { display: flex; align-items: center; gap: 4px; color: #bbb; font-size: 12px }
+#track-filter input { min-height: 0 }
+.track { display: grid; grid-template-columns: var(--label-width) minmax(0,1fr); padding-right: 12px; min-width: 0 }
+.track-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; color: #aaa; padding-left: 12px; font-size: 12px }
+.lane { position: relative; min-width: 0 }
+.overview-row { height: 30px }
+.overview-row .lane { cursor: ew-resize; touch-action: none; background: #232323 }
+.overview-row .lane > span { pointer-events: none }
+.overview-act { position: absolute; top: 5px; height: 16px; background: color-mix(in srgb,var(--chapter-color),#111 65%); border-top: 2px solid var(--chapter-color); color: #ddd; padding-left: 4px; font-size: 11px; overflow: hidden }
+.overview-still { position: absolute; bottom: 3px; height: 3px; background: #cba86a }
+.overview-note { position: absolute; bottom: 2px; width: 5px; height: 5px; border-radius: 50%; background: white }
+.version-mask { position: absolute; inset-block: 0; background: #0008 }
+.viewport-box { position: absolute; inset-block: 2px; border: 1px solid #ddd; border-radius: 3px }
+.viewport-box::before, .viewport-box::after { content: ''; position: absolute; top: 8px; height: 8px; border-left: 2px solid #ccc }
+.viewport-box::before { left: 2px }
+.viewport-box::after { right: 2px }
+.overview-cursor, .ruler .lane::after, .review-row .lane::after, .project-track .lane::after { content: ''; position: absolute; left: var(--cursor); inset-block: 0; border-left: 1px solid var(--cursor-color); z-index: 4; pointer-events: none }
+.overview-cursor { left: var(--cursor-overview) }
+.track .lane { clip-path: inset(0) }
+.project-track .lane { clip-path: none }
+.project-track .lane::after { left: clamp(-2px,var(--cursor),100%); clip-path: inset(0); visibility: var(--cursor-visible, visible) }
+.selection-band { position: absolute; inset-block: 0; background: #fff2; z-index: 2; pointer-events: none }
+.overview-row .selection-band { inset-block: 3px auto; height: 2px; background: #fff }
+.ruler { height: 24px; border-top: 1px solid #252525 }
+.ruler .lane { cursor: crosshair }
+.tick { position: absolute; height: 5px; bottom: 0; border-left: 1px solid #555; color: #aaa; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap }
+.tick.major { height: 100%; padding-left: 4px; line-height: 19px }
+.review-row { height: 22px; border-top: 1px solid #242424 }
+.notes-row { height: 20px }
+.bars-row { height: 18px }
+.chapter, .marker { position: absolute; border: 0; border-radius: 0; background: transparent; padding: 0 4px; min-height: 0; font-size: 12px; text-align: left; white-space: nowrap; color: #bbb; overflow: hidden; text-overflow: ellipsis }
+.chapter { inset-block: 2px; border-top: 2px solid var(--chapter-color) }
+.marker { border-left: 1px solid #555; height: 18px; font-size: 11px; padding-left: 3px }
+.marker.cue-mark { color: #d5b582; inset-block-start: 8px; height: 12px; border: 0; padding: 0 }
+.sounds-row .marker { inset-block-start: 3px }
+.marker.unlabelled { font-size: 0; padding: 0; width: 4px }
+.marker.selected-marker { font-weight: 750; color: #fff }
+.missing { display: inline-block; color: #aaa; border: 1px dashed #4c4c4c; padding: 0 6px; line-height: 16px; font-size: 12px; margin: 1px 0 }
+.timeline-scroll { flex: 1; min-height: 0; overflow: auto; margin-top: 8px; border-top: 1px solid #333; scrollbar-width: thin; scrollbar-gutter: stable }
+#overview, #review-rows { padding-right: var(--scroll-gutter, 0px) }
+.project-track { min-height: 76px; background: #1d1d1d; border-bottom: 1px solid #303030 }
+.project-track.audio { min-height: 48px; background: #1b1b1b }
+.project-track .track-name { align-self: start; padding-top: 4px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 3px 4px; padding-right: 4px }
+.project-track .track-name span { overflow: hidden; text-overflow: ellipsis }
+.project-track .track-name strong { font-size: 11px; border: 1px solid #575757; padding: 0 3px; border-radius: 2px }
+.project-track .track-name small { grid-column: span 2; font-size: 11px }
+.project-track .lane { margin-block: 1px; background: #242424 }
+.edit-clip, .cluster { position: absolute; inset-block: 0; min-height: 0 }
+.edit-clip { border: 0; padding: 0; border-radius: 3px; background: transparent; text-align: left }
+.edit-clip:hover, .edit-clip[aria-pressed=true] { background: transparent; z-index: 3 }
+.clip-content { display: block; width: calc(100% - 1px); height: 100%; position: relative; overflow: hidden; background: #303030; border: 1px solid #4a4a4a; border-radius: 3px }
+.edit-clip[aria-pressed=true] .clip-content { border: 2px solid white }
+.edit-clip:hover .clip-content { border-color: #aaa }
+.edit-clip.placeholder .clip-content, .cluster-bars .placeholder { background: repeating-linear-gradient(135deg,#434343 0 2px,#252525 2px 7px); border-style: dashed }
+.edit-clip.placeholder .thumbnail-strip { opacity: .62 }
+.edit-clip.small-hit { min-width: 12px }
+.clip-caption { display: block; height: 18px; background: #252525; padding: 1px 4px; color: #eee; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+.thumbnail-strip { display: flex; width: 100%; height: calc(100% - 18px); min-height: 0 }
+.thumbnail-strip:first-child { height: 100% }
+.clip-thumbnail { object-fit: cover; flex: none; height: 100%; width: auto; aspect-ratio: 16 / 9 }
+.waveform { display: block; width: 100%; height: calc(100% - 18px) }
+.waveform:first-child { height: 100% }
+.internal-boundary { position: absolute; inset-block: 0; border-left: 1px dashed #ddd; z-index: 1 }
+.cluster-button { width: 100%; height: 100%; border-radius: 3px; overflow: hidden; padding: 2px; font-size: 11px; white-space: nowrap; position: relative; background: #313131 }
+.cluster-bars { display: flex; gap: 1px; margin-top: 3px; height: 48%; pointer-events: none }
+.cluster-bars i { flex: 1; background: #686868 }
+.cluster-menu { display: none; position: fixed; z-index: 10; min-width: 150px; max-height: 260px; overflow: auto; background: #232323; border: 1px solid #555; border-radius: 5px; padding: 3px }
+.cluster-menu button { display: block; width: 100%; text-align: left; border: 0 }
+.cluster:hover .cluster-menu, .cluster:focus-within .cluster-menu { display: block }
+.multitrack .video { min-height: 44px }
+.multitrack .audio { min-height: 26px }
+.multitrack .audio .track-name { padding-top: 3px }
+.multitrack .audio small { display: none }
+#workspace[data-timeline=expanded] .project-track.video { min-height: 136px }
+#workspace[data-timeline=expanded] .project-track.audio { min-height: 96px }
+#workspace[data-timeline=expanded] .multitrack .video { min-height: 44px }
+#workspace[data-timeline=expanded] .multitrack .audio { min-height: 26px }
+#workspace[data-timeline=expanded] .chapter-row, #workspace[data-timeline=expanded] .shots-row { height: 24px }
+#workspace[data-timeline=expanded] .notes-row { height: 22px }
+#workspace[data-timeline=collapsed] .timeline-scroll { margin-top: 2px }
+#workspace[data-timeline=collapsed] .project-track { min-height: 65px }
+@media (min-width: 1600px) { .screen { grid-template-columns: minmax(0,1fr) 360px } }
+@media (max-width: 1179px) {
+  .screen { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) 44px auto }
+  .monitor { grid-row: 1 / -1; grid-template-rows: subgrid }
+  .inspector { display: none; position: absolute; grid-area: 1 / 1 / 2 / 2; right: 0; inset-block: 0; width: min(320px,75%); z-index: 5 }
+  .show-inspector .inspector { display: block }
+  #inspect-toggle { display: inline-block }
+}
+@media (max-width: 850px) { .brand, #track-filter, #frame-number { display: none } }
+@media (max-width: 640px) {
+  #film-summary, #timeline-range, #speed, #mute, #loop-shot, #total-time { display: none }
+  .timeline { --label-width: 67px }
+  .track-name { padding-left: 5px }
+  .toolbar { padding: 0 5px }
+  .toolbar nav button, .control-group button { padding-inline: 4px }
+  #return-frame { display: none }
+  #project { max-width: 105px }
+  #review-version { max-width: 105px }
+  .monitor { padding-inline: 5px }
+  .player-bar, .player-actions, .transport { gap: 2px }
+  .transport button, .player-actions button { padding-inline: 5px }
+  .clock strong { font-size: 14px }
+  .timeline-tools { padding-inline: 5px; gap: 3px }
+  .quick-note { display: grid; grid-template-columns: minmax(0, 1fr) auto auto }
+  .quick-note label, #retarget-note { grid-column: 1 / -1 }
+  .quick-note label { max-width: none }
+  #retarget-note { justify-self: start }
+}
+
+#project-menu { border: 0; background: transparent; padding-inline: 3px; color: #aaa }
+#project-menu:hover { background: #2a2a2a }
+.pending-shot { margin: 0 !important; height: 30px }
+.pending-shot strong { width: 39px; flex: none; white-space: nowrap }
+.chapter-active { color: #fff }
+.clip-state { position: absolute; bottom: 2px; right: 3px; padding: 1px 3px; background: #181818; font-size: 11px }
+.edit-clip[aria-pressed=true].placeholder .clip-content { border-style: solid }
+@media (max-width: 850px) { #project-menu { display: none } }
+
+.compact-caption { padding-inline: 2px }
+.edit-clip.small-hit { z-index: 1 }
+.edit-clip.small-hit:hover, .edit-clip.small-hit[aria-pressed=true] { z-index: 3 }
+
+.notes-row .lane { clip-path: none }
+.notes-row .lane::after { visibility: var(--cursor-visible, hidden) }
+.marker.note-mark { border: 0; min-width: 12px; color: #f2f2f2 }
+.old-note { opacity: .62 }
+.note-cluster { z-index: 5 }
+.note-cluster .cluster-button { padding-inline: 4px }
+.note-cluster .cluster-menu { max-width: min(300px, 100vw) }
+.note-cluster .cluster-menu button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.note-entry[aria-current=true] { background: #343434; color: #fff }

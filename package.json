@@ -1,0 +1,70 @@
+{
+  "name": "production-canvas-desktop",
+  "version": "1.5.0",
+  "description": "Local film review and production canvas for Windows.",
+  "author": "Justin Yao",
+  "private": true,
+  "main": "app/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack:win": "node -e \"const { execFileSync } = require('node:child_process'); const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim(); if (git('status', '--porcelain')) throw Error('Commit source changes before packing'); const commit = git('rev-parse', 'HEAD'); execFileSync(process.execPath, [require.resolve('electron-builder/cli.js'), '--win', 'portable', '--x64', '--publish', 'never', '--config.extraMetadata.buildCommit=' + commit], { stdio: 'inherit' });\"",
+    "check": "node --check app/main.js && node --check app/canvas.js && node --check app/project.js && node --check app/public/canvas-ui.js && node --check app/public/review-timeline.js && node --check app/public/note-location.js && node --check scripts/build-demo.cjs && npm test",
+    "test": "node --test tests/*.test.cjs",
+    "verify:sample": "node scripts/verify-sample.cjs",
+    "demo:build": "node scripts/build-demo.cjs"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "local.production-canvas.desktop",
+    "productName": "Production Canvas",
+    "artifactName": "ProductionCanvas-${version}-win-x64.exe",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app/main.js",
+      "app/canvas.js",
+      "app/project.js",
+      "app/public/**/*",
+      "package.json",
+      "LICENSE",
+      "LICENSE.zh-CN.md",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "extraResources": [
+      {
+        "from": "app/canvas-worker.py",
+        "to": "worker/canvas-worker.py"
+      },
+      {
+        "from": "demo",
+        "to": "demo",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "app/public/studio-mark.png",
+      "signAndEditExecutable": false
+    }
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.12.0"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/justinzyc271828-sys/production-canvas-public",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justinzyc271828-sys/production-canvas-public.git"
+  },
+  "bugs": {
+    "url": "https://github.com/justinzyc271828-sys/production-canvas-public/issues"
+  }
+}

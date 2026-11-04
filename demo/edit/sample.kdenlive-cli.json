@@ -1,0 +1,283 @@
+{
+  "version": "1.0",
+  "name": "Original synthetic review exercise",
+  "profile": {
+    "fps_num": 24,
+    "fps_den": 1,
+    "width": 640,
+    "height": 360
+  },
+  "bin": [
+    {
+      "id": "1",
+      "name": "S01",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "2",
+      "name": "S02",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "3",
+      "name": "S03",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "4",
+      "name": "S04",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "5",
+      "name": "S05",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "6",
+      "name": "S06",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "7",
+      "name": "S07",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "8",
+      "name": "S08",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "9",
+      "name": "S09",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "10",
+      "name": "S10",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "11",
+      "name": "S11",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "12",
+      "name": "S12",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "13",
+      "name": "S13",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "14",
+      "name": "S14",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "15",
+      "name": "S15",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "16",
+      "name": "S16",
+      "source": "media/sequence.mp4",
+      "duration": 30,
+      "type": "video"
+    },
+    {
+      "id": "17",
+      "name": "Original pulse",
+      "source": "media/tone.wav",
+      "duration": 30,
+      "type": "audio"
+    }
+  ],
+  "tracks": [
+    {
+      "id": 0,
+      "name": "画面",
+      "type": "video",
+      "clips": [
+        {
+          "clip_id": "1",
+          "in": 0,
+          "out": 4,
+          "position": 0,
+          "filters": [],
+          "shot": "S01"
+        },
+        {
+          "clip_id": "2",
+          "in": 4,
+          "out": 7,
+          "position": 4,
+          "filters": [],
+          "shot": "S02"
+        },
+        {
+          "clip_id": "3",
+          "in": 7,
+          "out": 9,
+          "position": 7,
+          "filters": [],
+          "shot": "S03"
+        },
+        {
+          "clip_id": "4",
+          "in": 9,
+          "out": 11,
+          "position": 9,
+          "filters": [],
+          "shot": "S04"
+        },
+        {
+          "clip_id": "5",
+          "in": 11,
+          "out": 12.5,
+          "position": 11,
+          "filters": [],
+          "shot": "S05"
+        },
+        {
+          "clip_id": "6",
+          "in": 12.5,
+          "out": 12.75,
+          "position": 12.5,
+          "filters": [],
+          "shot": "S06"
+        },
+        {
+          "clip_id": "7",
+          "in": 12.75,
+          "out": 13,
+          "position": 12.75,
+          "filters": [],
+          "shot": "S07"
+        },
+        {
+          "clip_id": "8",
+          "in": 13,
+          "out": 13.25,
+          "position": 13,
+          "filters": [],
+          "shot": "S08"
+        },
+        {
+          "clip_id": "9",
+          "in": 13.25,
+          "out": 13.5,
+          "position": 13.25,
+          "filters": [],
+          "shot": "S09"
+        },
+        {
+          "clip_id": "10",
+          "in": 13.5,
+          "out": 15,
+          "position": 13.5,
+          "filters": [],
+          "shot": "S10"
+        },
+        {
+          "clip_id": "11",
+          "in": 15,
+          "out": 17.5,
+          "position": 15,
+          "filters": [],
+          "shot": "S11"
+        },
+        {
+          "clip_id": "12",
+          "in": 17.5,
+          "out": 20,
+          "position": 17.5,
+          "filters": [],
+          "shot": "S12"
+        },
+        {
+          "clip_id": "13",
+          "in": 20,
+          "out": 22.5,
+          "position": 20,
+          "filters": [],
+          "shot": "S13"
+        },
+        {
+          "clip_id": "14",
+          "in": 22.5,
+          "out": 25.5,
+          "position": 22.5,
+          "filters": [],
+          "shot": "S14"
+        },
+        {
+          "clip_id": "15",
+          "in": 25.5,
+          "out": 28,
+          "position": 25.5,
+          "filters": [],
+          "shot": "S15"
+        },
+        {
+          "clip_id": "16",
+          "in": 28,
+          "out": 30,
+          "position": 28,
+          "filters": [],
+          "shot": "S16"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "混音",
+      "type": "audio",
+      "clips": [
+        {
+          "clip_id": "17",
+          "in": 0,
+          "out": 30,
+          "position": 0,
+          "filters": []
+        }
+      ]
+    }
+  ],
+  "transitions": []
+}

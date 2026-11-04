@@ -1,0 +1,238 @@
+{
+  "timelineRevision": "468fdf728526dfdc6edf94d792d8f58ac63eb8ca7536dc4c73b3073071c9d39a",
+  "chapters": [
+    {
+      "title": "认识画面",
+      "start": 0,
+      "end": 216,
+      "color": "#526c80"
+    },
+    {
+      "title": "短镜头练习",
+      "start": 216,
+      "end": 360,
+      "color": "#717753"
+    },
+    {
+      "title": "停帧与指令",
+      "start": 360,
+      "end": 540,
+      "color": "#9c7560"
+    },
+    {
+      "title": "回到全片",
+      "start": 540,
+      "end": 720,
+      "color": "#766485"
+    }
+  ],
+  "shots": [
+    {
+      "frame": 0,
+      "title": "S01"
+    },
+    {
+      "frame": 96,
+      "title": "S02"
+    },
+    {
+      "frame": 168,
+      "title": "S03"
+    },
+    {
+      "frame": 216,
+      "title": "S04"
+    },
+    {
+      "frame": 264,
+      "title": "S05"
+    },
+    {
+      "frame": 300,
+      "title": "S06"
+    },
+    {
+      "frame": 306,
+      "title": "S07"
+    },
+    {
+      "frame": 312,
+      "title": "S08"
+    },
+    {
+      "frame": 318,
+      "title": "S09"
+    },
+    {
+      "frame": 324,
+      "title": "S10"
+    },
+    {
+      "frame": 360,
+      "title": "S11"
+    },
+    {
+      "frame": 420,
+      "title": "S12"
+    },
+    {
+      "frame": 480,
+      "title": "S13"
+    },
+    {
+      "frame": 540,
+      "title": "S14"
+    },
+    {
+      "frame": 612,
+      "title": "S15"
+    },
+    {
+      "frame": 672,
+      "title": "S16"
+    }
+  ],
+  "clips": [
+    {
+      "track": 0,
+      "clip": 0,
+      "shot": "S01",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 1,
+      "shot": "S02",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 2,
+      "shot": "S03",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 3,
+      "shot": "S04",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 4,
+      "shot": "S05",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 5,
+      "shot": "S06",
+      "placeholder": true,
+      "thumbnail": {
+        "path": "media/shot-6.png",
+        "sha256": "95da252607171a3f3fa9270e405fd92fb8dbf6295648ee0c8dec999ade836de0"
+      }
+    },
+    {
+      "track": 0,
+      "clip": 6,
+      "shot": "S07",
+      "placeholder": true,
+      "thumbnail": {
+        "path": "media/shot-7.png",
+        "sha256": "df7abeb5aaccc25e81b0dfe37722eda5d159cfa83da320cc711ed23bccf55788"
+      }
+    },
+    {
+      "track": 0,
+      "clip": 7,
+      "shot": "S08",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 8,
+      "shot": "S09",
+      "placeholder": true,
+      "thumbnail": {
+        "path": "media/shot-9.png",
+        "sha256": "87c626898b2651a2065e14b435da3af20734ce9d812b840903f7494b9097a9e7"
+      }
+    },
+    {
+      "track": 0,
+      "clip": 9,
+      "shot": "S10",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 10,
+      "shot": "S11",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 11,
+      "shot": "S12",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 12,
+      "shot": "S13",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 13,
+      "shot": "S14",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 14,
+      "shot": "S15",
+      "placeholder": false
+    },
+    {
+      "track": 0,
+      "clip": 15,
+      "shot": "S16",
+      "placeholder": false
+    }
+  ],
+  "cues": [
+    {
+      "frame": 300,
+      "title": "连续短镜头"
+    },
+    {
+      "frame": 420,
+      "title": "在这一帧记指令"
+    },
+    {
+      "frame": 612,
+      "title": "对照节拍"
+    }
+  ],
+  "sounds": [
+    {
+      "frame": 0,
+      "title": "原创建拍声"
+    },
+    {
+      "frame": 360,
+      "title": "旋律变化"
+    }
+  ],
+  "music": {
+    "bpm": 120,
+    "beatsPerBar": 4,
+    "start": 0,
+    "end": 720
+  },
+  "sources": [
+    "Original programmatic picture and PCM audio in scripts/build-demo.cjs"
+  ]
+}

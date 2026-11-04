@@ -1,0 +1,18 @@
+{
+  "schema": "production-canvas/v1",
+  "title": "示例影片 · 审片练习",
+  "timeline": "edit/sample.kdenlive",
+  "video": {
+    "path": "media/sequence.mp4",
+    "label": "全片候选"
+  },
+  "focus": {
+    "path": "media/focus.mp4",
+    "label": "短镜头练习",
+    "start": 264,
+    "end": 420
+  },
+  "mix": "media/tone.wav",
+  "review": "review.json",
+  "notes": "README.md"
+}
