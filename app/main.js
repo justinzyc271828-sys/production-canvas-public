@@ -7,6 +7,7 @@ const path = require('node:path');
 const { randomBytes } = require('node:crypto');
 const { buildCommit = null } = require('../package.json');
 const canvas = require('./canvas');
+const { createBridge } = require('./mcp-bridge');
 const { loadProject, schema: projectSchema } = require('./project');
 
 app.setName('Production Canvas');
@@ -31,6 +32,7 @@ let listener;
 let origin;
 let comfyView;
 let comfyProject;
+let mcpBridge;
 const comfyOrigin = 'http://127.0.0.1:8188';
 
 const mime = {
@@ -135,10 +137,11 @@ async function readBody(req) {
 async function startServer() {
   listener = http.createServer(async (req, res) => {
     try {
+      const url = new URL(req.url, origin);
+      if (mcpBridge && await mcpBridge.handle(req, res, url, reply, readBody)) return;
       if (req.headers['x-canvas-desktop'] !== appToken || req.headers.host !== new URL(origin).host) {
         return reply(res, 403, { error: '仅桌面应用会话可访问' });
       }
-      const url = new URL(req.url, origin);
       if (url.origin !== origin) return reply(res, 403, { error: '未知的本地地址' });
       if (url.pathname === '/desktop/project-menu' && req.method === 'POST' && req.headers.origin === origin) {
         Menu.getApplicationMenu()?.items[0]?.submenu?.popup({ window: mainWindow });
@@ -731,7 +734,8 @@ app.whenReady().then(async () => {
     width: 1400, height: 930, minWidth: 390, minHeight: 620, autoHideMenuBar: true, show: false, title: 'Production Canvas',
     backgroundColor: '#0f0f0f',
     icon: path.join(__dirname, 'public', 'studio-mark.png'),
-    webPreferences: { session: browserSession, contextIsolation: true, sandbox: true, nodeIntegration: false }
+    webPreferences: { session: browserSession, contextIsolation: true, sandbox: true, nodeIntegration: false,
+      backgroundThrottling: false }
   });
   protect(mainWindow.webContents);
   mainWindow.on('resize', resizeComfy);
@@ -742,6 +746,29 @@ app.whenReady().then(async () => {
   if (!verifyOutput) mainWindow.once('ready-to-show', () => mainWindow.show());
   makeMenu(demo);
   await showProject();
+  mcpBridge = createBridge({
+    origin, profile: data, version: app.getVersion(), buildCommit,
+    registry: process.env.PRODUCTION_CANVAS_MCP_REGISTRY || path.join(app.getPath('appData'), 'ProductionCanvas', 'mcp-sessions'),
+    getWindow: () => mainWindow,
+    validateBinding,
+    listProjects: () => Object.entries({ ...settings.projects, demo }).map(([id, value]) => ({ id, title: value.title })),
+    openProject: async id => {
+      settings.active = id;
+      applySettings(demo);
+      await showProject();
+    },
+    importProjects: async bindings => {
+      settings.projects = { ...settings.projects, ...bindings };
+      settings.active = Object.keys(bindings).at(-1);
+      applySettings(demo);
+      await showProject();
+    },
+  });
+  try {
+    mcpBridge.publish();
+  } catch (error) {
+    console.warn('Production Canvas MCP discovery unavailable: ' + error.message);
+  }
   if (verifyOutput) await verify();
 }).catch(error => {
   if (verifyOutput) {
@@ -754,4 +781,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => listener?.close());
+app.on('before-quit', () => {
+  mcpBridge?.close();
+  listener?.close();
+});

@@ -115,8 +115,9 @@ function timeline(p, draft) {
   return readTimeline(source);
 }
 
-function videoInfo(record) {
+function videoInfo(record, root) {
   return { version: path.basename(record.path), sha256: record.sha256,
+    actualSha256: root ? revision(existing(root, record.path)) : record.sha256,
     width: record.width, height: record.height, frames: record.frames };
 }
 
@@ -149,7 +150,7 @@ function summary(p, draft) {
   if (p.review?.focus && !draft) {
     const record = p.review.focus;
     if (record.end > t.frames) throw problem(422, '重点片段超出时间线');
-    focus = { ...videoInfo(record), start: record.start, end: record.end, frames: record.end - record.start,
+    focus = { ...videoInfo(record, p.dir), start: record.start, end: record.end, frames: record.end - record.start,
       width: record.width || t.width, height: record.height || t.height, label: record.label, url: base + 'battle-focus' };
   }
   let graph = p.battle?.canvas;
@@ -179,12 +180,12 @@ function summary(p, draft) {
   return {
     title: p.title, project: p.id, draft, tracks: t.tracks, fps: t.fps, frames: t.frames,
     transitions: t.transitions, revision: t.revision, timelineFile: path.relative(p.dir, t.source),
-    mediaBase: base, opening: opening ? { seconds: opening.seconds, markers: opening.review_markers,
+    mediaBase: base, opening: opening ? { ...videoInfo(opening.video, p.dir), seconds: opening.seconds, markers: opening.review_markers,
       version: path.basename(opening.video.path), revision: hash(JSON.stringify(opening.video)),
       approved: opening.status === 'OWNER_APPROVED_FINAL', url: base + 'opening' } : null,
     segment: { status: p.review ? 'REVIEW' : p.battle?.status || s03.status, version: draft || path.basename(film.path),
       url: draft ? base + 'preview?draft=' + draft : base + 's03' },
-    video: { ...videoInfo(film), width: film.width || t.width, height: film.height || t.height }, focus,
+    video: { ...videoInfo(film, p.dir), width: film.width || t.width, height: film.height || t.height }, focus,
     reviewData: annotations.data, warnings: annotations.warning ? [annotations.warning] : [],
     decisions: p.battle || p.review ? reviewDecisions(p, t.revision) : {},
     mixUrl: (p.battle?.lossless_mix || p.review?.mix) &&

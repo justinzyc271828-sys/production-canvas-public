@@ -53,6 +53,18 @@ The [complete sample](demo/project.json) is an editable starting point.
 The API listens on loopback and requires a fresh desktop-session token.
 Project media and directions stay in the selected local directory.
 
+## Local MCP control
+
+The local working build includes an authenticated MCP bridge for project
+selection, playback, frame and shot navigation, screenshots and frame-linked
+directions. The Python adapter and connection instructions are in
+[mcp/README.md](mcp/README.md). Its tools require the current project, timeline
+revision and video hash for changes. This addition is available in the local
+MCP-enabled build and source checkout.
+
+The [MCP implementation handoff](docs/mcp-handoff-2026-11-04.md) records the
+verified scope, source snapshot and remaining distribution boundary.
+
 ## Keyboard
 
 | Key | Action |

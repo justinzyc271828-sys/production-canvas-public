@@ -38,6 +38,7 @@ h1, h2, h3, h4, p { margin: 0 }
 h2, h3 { font-size: 16px; font-weight: 600 }
 h4 { font-size: 13px; font-weight: 600 }
 button, input, select, textarea { font: inherit; color: inherit; background: #1d1d1d; border: 1px solid #393939; border-radius: 5px; padding: 4px 9px; min-height: 28px }
+select option, select optgroup { color: var(--ink); background-color: #1d1d1d }
 button { cursor: pointer }
 button:hover { background: var(--hover) }
 button:disabled { opacity: .48; cursor: default }
@@ -170,8 +171,12 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 .edit-clip { border: 0; padding: 0; border-radius: 3px; background: transparent; text-align: left }
 .edit-clip:hover, .edit-clip[aria-pressed=true] { background: transparent; z-index: 3 }
 .clip-content { display: block; width: calc(100% - 1px); height: 100%; position: relative; overflow: hidden; background: #303030; border: 1px solid #4a4a4a; border-radius: 3px }
-.edit-clip[aria-pressed=true] .clip-content { border: 2px solid white }
 .edit-clip:hover .clip-content { border-color: #aaa }
+.edit-clip[aria-pressed=true] .clip-content { border: 2px solid #f0c77e; box-shadow: inset 0 0 0 1px #161616, 0 0 6px #f0c77e55; animation: clip-selected 180ms ease-out }
+.edit-clip[aria-pressed=true] .clip-caption { color: #ffe5b6; background: #403521 }
+.project-track:has(.edit-clip[aria-pressed=true]) .track-name { color: #ffe5b6; background: #2c261d; box-shadow: inset 3px 0 #f0c77e }
+@keyframes clip-selected { from { filter: brightness(1.25) } to { filter: brightness(1) } }
+@media (prefers-reduced-motion: reduce) { .edit-clip[aria-pressed=true] .clip-content { animation: none } }
 .edit-clip.placeholder .clip-content, .cluster-bars .placeholder { background: repeating-linear-gradient(135deg,#434343 0 2px,#252525 2px 7px); border-style: dashed }
 .edit-clip.placeholder .thumbnail-strip { opacity: .62 }
 .edit-clip.small-hit { min-width: 12px }

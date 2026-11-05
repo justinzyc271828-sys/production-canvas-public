@@ -18,6 +18,7 @@ let quickNote;
 let playbackRate = 1;
 let muted = false;
 let loop = null;
+let lastSavedDirectionId = null;
 
 const stages = {
   start: '排队', connect: '连接本地工具', copy: '复制工作版', edit: '修改剪辑',
@@ -426,6 +427,7 @@ $('project').addEventListener('change', () => {
   screening = false;
   briefId = null;
   briefAnchor = null;
+  lastSavedDirectionId = null;
   $('brief').reset();
   projectEpoch += 1;
   boot().catch(error => tell(error.message, true));
@@ -588,8 +590,7 @@ $('quick-note').addEventListener('keydown', event => {
   event.stopPropagation();
   closeQuickNote();
 });
-$('quick-note').addEventListener('submit', async event => {
-  event.preventDefault();
+async function saveQuickNote() {
   const active = quickNote;
   const input = $('inline-note');
   const text = input.value.trim();
@@ -598,19 +599,24 @@ $('quick-note').addEventListener('submit', async event => {
   const controls = [...$('quick-note').elements];
   for (const control of controls) control.disabled = true;
   try {
-    await saveBrief({ id: active.id, title: noteTitle(text), text, target: noteTarget(active.context),
+    const saved = await saveBrief({ id: active.id, title: noteTitle(text), text, target: noteTarget(active.context),
       route: 'direction', anchor: active.context.anchor });
+    lastSavedDirectionId = saved.id;
     if (quickNote === active) {
       closeQuickNote();
       tell('已保存指令。');
     }
-  } catch (error) {
-    if (quickNote === active) tell(error.message, true);
+    return saved;
   } finally {
     active.saving = false;
     for (const control of controls) control.disabled = false;
     if (quickNote === active) { refreshQuickNote(); input.focus(); }
   }
+}
+$('quick-note').addEventListener('submit', async event => {
+  event.preventDefault();
+  try { await saveQuickNote(); }
+  catch (error) { tell(error.message, true); }
 });
 $('inline-note').addEventListener('input', () => {
   if (quickNote && !quickNote.saving) quickNote.id = crypto.randomUUID().replaceAll('-', '');
@@ -668,5 +674,149 @@ $('run-references').addEventListener('click', async event => {
     control.disabled = false;
   }
 });
+
+function mcpFailure(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+function mcpReviewState() {
+  if (!model || !(player instanceof HTMLVideoElement)) {
+    return { ready: false, project_id: project || null };
+  }
+  const media = currentView === 'battle' ? model.focus : currentView === 'opening' ? model.opening : model.video;
+  const clip = selectedClip();
+  const draftFields = $('brief').elements;
+  return {
+    ready: player.readyState >= 2 && videoClock?.displayed != null && !videoClock.pending,
+    project_id: project, revision: currentView === 'opening' ? model.opening.revision : model.revision,
+    video_sha256: media?.actualSha256 || media?.sha256 || null, video_version: versionName(), current_view: currentView,
+    displayed_frame: playFrame(), requested_frame: videoClock?.target == null ? null : videoClock.target + mediaOffset(),
+    fps: model.fps, frames: currentView === 'opening' ? media?.frames || Math.round(player.duration * model.fps) : model.frames,
+    current_time: player.currentTime + mediaOffset() / model.fps,
+    available_views: ['s03', ...(model.focus ? ['battle'] : []), ...(model.opening ? ['opening'] : [])],
+    paused: player.paused, ended: player.ended, ready_state: player.readyState,
+    media_error: player.error ? { code: player.error.code, message: player.error.message } : null,
+    network_state: player.networkState,
+    selected_clip: clip ? { track: selected.track, clip: selected.clip, shot: clip.shot || null, frame: clip.position } : null,
+    quick_note: quickNote ? { id: quickNote.id, frame: quickNote.context.anchor.frame,
+      has_text: Boolean($('inline-note').value.trim()), saving: quickNote.saving } : null,
+    unsaved_direction: Boolean((quickNote && $('inline-note').value.trim()) || quickNote?.saving ||
+      draftFields.title.value.trim() || draftFields.target.value.trim() || draftFields.text.value.trim()),
+    last_saved_direction_id: lastSavedDirectionId,
+    directions: model.tasks.filter(task => task.route === 'direction').map(task => ({
+      id: task.id, title: task.title, anchor: task.anchor, resolved: resolveNote(task) })),
+    shots: pictureClips().filter(item => item.shot).map(item => ({ id: item.shot, frame: item.position })),
+  };
+}
+
+async function mcpWaitForFrame(frame, epoch) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (epoch !== projectEpoch) throw mcpFailure('project_changed', '项目在操作过程中发生变化');
+    if (videoClock?.displayed != null && !videoClock.pending && !player.seeking &&
+        (frame === undefined || playFrame() === frame)) return mcpReviewState();
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw mcpFailure('frame_not_settled', '未能确认实际显示帧，请先读取当前状态');
+}
+
+function mcpCheckIdentity(command) {
+  const state = mcpReviewState();
+  const canStartLoading = ['play', 'seek_frame', 'select_view'].includes(command.action) && state.ready_state >= 1;
+  if (!state.ready && !canStartLoading) throw mcpFailure('not_ready', '影片尚未加载完成');
+  if (state.media_error) throw mcpFailure('media_error', state.media_error.message || '影片解码失败');
+  if (command.project_id !== state.project_id || command.expected_revision !== state.revision ||
+      command.expected_video_sha256 !== state.video_sha256) {
+    throw mcpFailure('version_changed', '项目、时间轴或视频版本不匹配');
+  }
+  if (currentView === 'asset' || document.body.dataset.view === 'comfy') {
+    throw mcpFailure('unsupported_view', '请先切换到影片审看视图');
+  }
+  return state;
+}
+
+window.productionCanvasMcp = async command => {
+  const actions = ['state', 'select_view', 'seek_frame', 'navigate_shot', 'play', 'pause',
+    'open_direction', 'save_direction', 'jump_to_direction'];
+  if (!command || !actions.includes(command.action)) throw mcpFailure('unknown_command', '不支持的画布控制命令');
+  if (command.action === 'state') return mcpReviewState();
+  const state = mcpCheckIdentity(command);
+  const epoch = projectEpoch;
+  const moving = ['select_view', 'seek_frame', 'navigate_shot', 'play', 'jump_to_direction'].includes(command.action);
+  if (moving && (quickNote?.saving || (quickNote && $('inline-note').value.trim()))) {
+    throw mcpFailure('unsaved_direction', '请先保存当前导演指令');
+  }
+  if (command.action === 'select_view') {
+    if (!state.available_views.includes(command.view)) throw mcpFailure('unknown_view', '该审片版本不存在');
+    if (command.view === currentView) return mcpReviewState();
+    if (quickNote) closeQuickNote(false);
+    showSegment(command.view, 0, false, true);
+    return mcpWaitForFrame(command.view === 'battle' ? model.focus.start : 0, epoch);
+  }
+  if (command.action === 'play') {
+    loop = null;
+    screening = false;
+    await player.play();
+    return mcpReviewState();
+  }
+  if (command.action === 'pause') {
+    if (!await pauseForNote()) throw mcpFailure('pause_failed', '未能确认暂停帧');
+    return mcpWaitForFrame(undefined, epoch);
+  }
+  if (command.action === 'seek_frame' || command.action === 'navigate_shot') {
+    const shot = command.action === 'navigate_shot' ? pictureClips().find(item => item.shot === (command.shot || command.shot_id)) : null;
+    const frame = shot ? shot.position : command.frame;
+    const frames = currentView === 'opening' && command.action === 'seek_frame'
+      ? Math.round(player.duration * model.fps) : model.frames;
+    if (!Number.isSafeInteger(frame) || frame < 0 || frame >= frames) {
+      throw mcpFailure('invalid_frame', '目标帧或镜头不存在');
+    }
+    if (command.action === 'navigate_shot' && !shot) throw mcpFailure('unknown_shot', '镜头不存在');
+    if (quickNote) closeQuickNote(false);
+    if (currentView === 'opening' && command.action === 'seek_frame') seekLocalFrame(frame, true);
+    else seekFrame(frame);
+    return mcpWaitForFrame(frame, epoch);
+  }
+  if (command.action === 'open_direction') {
+    if (quickNote && $('inline-note').value.trim() && !quickNoteIsAtCurrentFrame()) {
+      throw mcpFailure('unsaved_direction', '请先处理原帧上的导演草稿');
+    }
+    await openQuickNote();
+    if (!quickNote) throw mcpFailure('note_not_ready', '导演指令框未能打开');
+    return mcpReviewState();
+  }
+  if (command.action === 'save_direction') {
+    if (!/^[a-f0-9]{32}$/.test(command.operation_id || '') || typeof command.text !== 'string' ||
+        !command.text.trim() || command.text.length > 16000) throw mcpFailure('invalid_direction', '指令编号或内容无效');
+    const text = command.text.trim();
+    const previous = model.tasks.find(task => task.id === command.operation_id);
+    if (previous) {
+      if (previous.route !== 'direction' || previous.text !== text || previous.anchor?.revision !== state.revision ||
+          previous.anchor?.version !== state.video_version) throw mcpFailure('operation_conflict', '操作编号已用于另一条指令');
+      lastSavedDirectionId = previous.id;
+      return { ...mcpReviewState(), direction_id: previous.id, direction: previous, idempotent: true };
+    }
+    const retryDraft = quickNote && quickNote.id === command.operation_id &&
+      $('inline-note').value.trim() === text && quickNoteIsAtCurrentFrame() &&
+      quickNote.context.anchor.revision === state.revision && quickNote.context.version === state.video_version;
+    if (quickNote?.saving || (quickNote && $('inline-note').value.trim() && !retryDraft)) {
+      throw mcpFailure('unsaved_direction', '请先处理已有导演草稿');
+    }
+    await openQuickNote();
+    mcpCheckIdentity(command);
+    if (epoch !== projectEpoch || !quickNote || !quickNoteIsAtCurrentFrame()) throw mcpFailure('frame_changed', '指令锚点已变化');
+    quickNote.id = command.operation_id;
+    $('inline-note').value = text;
+    const saved = await saveQuickNote();
+    if (!saved) throw mcpFailure('save_failed', '指令未保存');
+    return { ...mcpReviewState(), direction_id: saved.id, direction: saved, idempotent: false };
+  }
+  const task = model.tasks.find(item => item.id === command.direction_id);
+  const location = task && resolveNote(task);
+  if (!location) throw mcpFailure('unresolved_direction', '这条指令无法定位到当前版本');
+  if (quickNote) closeQuickNote(false);
+  jumpNote(task);
+  return mcpWaitForFrame(location.frame, epoch);
+};
 
 document.addEventListener('DOMContentLoaded', () => boot().catch(error => tell(error.message, true)));

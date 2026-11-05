@@ -26,6 +26,7 @@
     },
     "files": [
       "app/main.js",
+      "app/mcp-bridge.js",
       "app/canvas.js",
       "app/project.js",
       "app/public/**/*",
