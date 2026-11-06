@@ -1,7 +1,7 @@
 # Production Canvas repository guidelines
 
 Read [README.md](README.md) for the product scope and launch instructions.
-For an independent review, start with [the review prompt](docs/review-prompt-zh.md).
+For an independent review, start with [the review prompt](docs/review-prompt.md).
 A request for review authorizes findings and suggestions. Ask the project owner before
 making changes beyond the requested review.
 
@@ -31,6 +31,12 @@ making changes beyond the requested review.
 - Keep production media, project workfiles, local profiles, generated jobs,
   and credentials out of source commits. Use the bundled sample for shared
   reproduction steps.
+- For startup, project selection or file-opening changes, run
+  `npm run verify:opening` as well as `npm run verify:sample`, including
+  against the packaged EXE before delivery. Preserve exact file identity,
+  reject ambiguous bindings, and keep unsaved directions in their project.
+  Check every existing local shortcut and MP4 open-command target against
+  that verified EXE's hash when updating the local installation.
 - Keep delivery actions tied to the owner-approved commit and asset. Verify
   repository visibility, the release tag, and the executable SHA-256 when
   publishing a new build.

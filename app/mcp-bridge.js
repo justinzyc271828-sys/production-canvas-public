@@ -5,11 +5,11 @@ const path = require('node:path');
 const { randomBytes, timingSafeEqual } = require('node:crypto');
 
 const rendererActions = new Set(['state', 'select_view', 'seek_frame', 'navigate_shot', 'play', 'pause',
-  'open_direction', 'save_direction', 'jump_to_direction']);
+  'open_direction', 'save_direction', 'jump_to_direction', 'list_direction_context', 'capture_direction_frames']);
 const commands = ['status', 'list_projects', 'open_project', 'import_project',
   ...rendererActions, 'capture_frame'];
 const allowedFields = new Set(['command', 'project_id', 'expected_revision', 'expected_video_sha256',
-  'view', 'frame', 'shot', 'shot_id', 'track', 'clip', 'text', 'operation_id', 'direction_id', 'manifest_path']);
+  'view', 'frame', 'frames', 'shot', 'shot_id', 'track', 'clip', 'text', 'operation_id', 'direction_id', 'manifest_path']);
 
 function failure(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });

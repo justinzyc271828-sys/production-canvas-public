@@ -1,14 +1,14 @@
 {
   "schema": "production-canvas/v1",
-  "title": "示例影片 · 审片练习",
+  "title": "Frame Annotation Lab",
   "timeline": "edit/sample.kdenlive",
   "video": {
     "path": "media/sequence.mp4",
-    "label": "全片候选"
+    "label": "Full-film candidate"
   },
   "focus": {
     "path": "media/focus.mp4",
-    "label": "短镜头练习",
+    "label": "Short-shot practice",
     "start": 264,
     "end": 420
   },

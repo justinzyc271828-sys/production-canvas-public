@@ -86,6 +86,12 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 .transport button:hover, #speed:hover, #mute:hover { background: #282828 }
 #play-toggle { width: 38px; height: 34px }
 #inspect-toggle { display: none }
+#review-fullscreen { display: grid; place-items: center; width: 30px; padding: 0 }
+#review-fullscreen .exit-icon, .monitor:fullscreen .expand-icon { display: none }
+.monitor:fullscreen { grid-template-rows: minmax(0,1fr) 44px auto; background: #000 }
+.monitor:fullscreen #review-fullscreen .exit-icon { display: initial }
+.monitor:fullscreen #player video, .monitor:fullscreen #player img { width: 100%; height: 100% }
+.monitor:fullscreen #inspect-toggle { display: none }
 .inspector { background: #171717; border-left: 1px solid var(--line); overflow: auto; min-height: 0; min-width: 0; padding: 14px 16px }
 #inspector > * { margin: 6px 0; overflow-wrap: anywhere }
 #inspector h4 { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line) }
@@ -130,7 +136,8 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 .overview-row .lane > span { pointer-events: none }
 .overview-act { position: absolute; top: 5px; height: 16px; background: color-mix(in srgb,var(--chapter-color),#111 65%); border-top: 2px solid var(--chapter-color); color: #ddd; padding-left: 4px; font-size: 11px; overflow: hidden }
 .overview-still { position: absolute; bottom: 3px; height: 3px; background: #cba86a }
-.overview-note { position: absolute; bottom: 2px; width: 5px; height: 5px; border-radius: 50%; background: white }
+.overview-note { position: absolute; bottom: 2px; width: 2px; height: 6px; background: #897454 }
+.overview-note[aria-current=true] { background: #efc477; height: 9px }
 .version-mask { position: absolute; inset-block: 0; background: #0008 }
 .viewport-box { position: absolute; inset-block: 2px; border: 1px solid #ddd; border-radius: 3px }
 .viewport-box::before, .viewport-box::after { content: ''; position: absolute; top: 8px; height: 8px; border-left: 2px solid #ccc }
@@ -148,10 +155,11 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 .tick { position: absolute; height: 5px; bottom: 0; border-left: 1px solid #555; color: #aaa; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap }
 .tick.major { height: 100%; padding-left: 4px; line-height: 19px }
 .review-row { height: 22px; border-top: 1px solid #242424 }
-.notes-row { height: 20px }
+.notes-row { height: 26px }
 .bars-row { height: 18px }
 .chapter, .marker { position: absolute; border: 0; border-radius: 0; background: transparent; padding: 0 4px; min-height: 0; font-size: 12px; text-align: left; white-space: nowrap; color: #bbb; overflow: hidden; text-overflow: ellipsis }
 .chapter { inset-block: 2px; border-top: 2px solid var(--chapter-color) }
+.chapter.compact-chapter { font-size: 0; padding-inline: 0 }
 .marker { border-left: 1px solid #555; height: 18px; font-size: 11px; padding-left: 3px }
 .marker.cue-mark { color: #d5b582; inset-block-start: 8px; height: 12px; border: 0; padding: 0 }
 .sounds-row .marker { inset-block-start: 3px }
@@ -183,7 +191,7 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 .clip-caption { display: block; height: 18px; background: #252525; padding: 1px 4px; color: #eee; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
 .thumbnail-strip { display: flex; width: 100%; height: calc(100% - 18px); min-height: 0 }
 .thumbnail-strip:first-child { height: 100% }
-.clip-thumbnail { object-fit: cover; flex: none; height: 100%; width: auto; aspect-ratio: 16 / 9 }
+.clip-thumbnail { object-fit: cover; flex: none; height: 100%; width: auto; aspect-ratio: var(--thumbnail-ratio, 16 / 9) }
 .waveform { display: block; width: 100%; height: calc(100% - 18px) }
 .waveform:first-child { height: 100% }
 .internal-boundary { position: absolute; inset-block: 0; border-left: 1px dashed #ddd; z-index: 1 }
@@ -202,7 +210,7 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 #workspace[data-timeline=expanded] .multitrack .video { min-height: 44px }
 #workspace[data-timeline=expanded] .multitrack .audio { min-height: 26px }
 #workspace[data-timeline=expanded] .chapter-row, #workspace[data-timeline=expanded] .shots-row { height: 24px }
-#workspace[data-timeline=expanded] .notes-row { height: 22px }
+#workspace[data-timeline=expanded] .notes-row { height: 26px }
 #workspace[data-timeline=collapsed] .timeline-scroll { margin-top: 2px }
 #workspace[data-timeline=collapsed] .project-track { min-height: 65px }
 @media (min-width: 1600px) { .screen { grid-template-columns: minmax(0,1fr) 360px } }
@@ -249,10 +257,16 @@ body[data-view=comfy] #review, body[data-view=comfy] #edit { display: none }
 
 .notes-row .lane { clip-path: none }
 .notes-row .lane::after { visibility: var(--cursor-visible, hidden) }
-.marker.note-mark { border: 0; min-width: 12px; color: #f2f2f2 }
+.marker.note-mark { top: 1px; height: 18px; border: 1px solid #9f865f; border-radius: 2px; padding: 0 5px; width: max-content; min-width: 22px; text-align: center; transform: translateX(-50%); overflow: visible; background: #2b2721; color: #dfc292; font-weight: 650; line-height: 16px; font-variant-numeric: tabular-nums; z-index: 5 }
+.marker.note-mark::after { content: ''; position: absolute; top: 100%; left: 50%; height: 5px; border-left: 1px solid currentColor }
+.marker.note-mark[aria-current=true], .note-cluster .cluster-button[aria-current=true] { background: #e7bc75; border-color: #e7bc75; color: #17130e }
+.marker.note-mark:hover, .marker.note-mark:focus-visible { outline: 1px solid #ffe2ab; outline-offset: 1px }
 .old-note { opacity: .62 }
 .note-cluster { z-index: 5 }
-.note-cluster .cluster-button { padding-inline: 4px }
+.note-cluster .cluster-button { padding-inline: 4px; height: 20px; border-color: #9f865f; color: #dfc292; background: #2b2721 }
 .note-cluster .cluster-menu { max-width: min(300px, 100vw) }
 .note-cluster .cluster-menu button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .note-entry[aria-current=true] { background: #343434; color: #fff }
+.note-number { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding-inline: 3px; border: 1px solid #9f865f; border-radius: 2px; color: #dfc292; flex: none; font-size: 11px; font-variant-numeric: tabular-nums }
+.note-entry[aria-current=true] .note-number { background: #e7bc75; color: #17130e; border-color: #e7bc75 }
+.note-entry-label { min-width: 0 }

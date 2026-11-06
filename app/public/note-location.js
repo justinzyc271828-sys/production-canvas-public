@@ -38,4 +38,30 @@ function resolveNoteLocation(model, anchor) {
   return { frame, view, review };
 }
 
-if (typeof module !== 'undefined') module.exports = { resolveNoteLocation };
+function noteShotContext(model, anchor, frame) {
+  const tracks = model.tracks.filter(track => track.type === 'video');
+  const endOf = clip => clip.position + clip.end - clip.start;
+  const covering = tracks.flatMap(track => track.clips.filter(clip => clip.position <= frame && frame < endOf(clip))
+    .map(clip => ({ track, clip })));
+  const match = covering.find(({ track, clip }) => track.id === anchor.clip?.track && clip.shot === anchor.shot) ||
+    covering.find(({ clip }) => anchor.shot && clip.shot === anchor.shot) ||
+    covering.find(({ track }) => track.id === anchor.clip?.track) || covering[0];
+  if (!match) return null;
+
+  const markers = new Map((model.reviewData?.shots || []).map(mark => [mark.frame, mark.title]));
+  const starts = [...markers.keys()].sort((a, b) => a - b);
+  const shots = match.track.clips.flatMap(clip => {
+    const end = endOf(clip);
+    const boundaries = [clip.position, ...starts.filter(start => start > clip.position && start < end), end];
+    return boundaries.slice(0, -1).map((start, index) => ({
+      track: match.track.id, clip: clip.index, start, end: boundaries[index + 1],
+      id: (index === 0 ? clip.shot : null) || markers.get(start) || null,
+      title: markers.get(start) || clip.name,
+      source: markers.has(start) ? 'shot_marker' : 'picture_clip'
+    }));
+  }).sort((a, b) => a.start - b.start);
+  const index = shots.findIndex(shot => shot.clip === match.clip.index && shot.start <= frame && frame < shot.end);
+  return { current: shots[index], previous: shots[index - 1] || null, next: shots[index + 1] || null };
+}
+
+if (typeof module !== 'undefined') module.exports = { resolveNoteLocation, noteShotContext };

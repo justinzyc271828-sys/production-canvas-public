@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { loadProject, readTimeline, readReview, existing, hash } = require('../app/project');
+const { loadProject, videoArgument, findVideoProject, readTimeline, readReview, existing, hash } = require('../app/project');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-project-test-'));
@@ -11,6 +11,44 @@ function fixture(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
+
+test('file opening never ignores unsupported or multiple positional files', () => {
+  const cwd = path.resolve(__dirname);
+  assert.equal(videoArgument(['--profile=isolated'], cwd), null);
+  assert.equal(videoArgument(['--profile=isolated', 'my review.MP4'], cwd), path.join(cwd, 'my review.MP4'));
+  assert.throws(() => videoArgument(['movie.mov'], cwd), /MP4/);
+  assert.throws(() => videoArgument(['first.mp4', 'second.mp4'], cwd), /one/);
+  assert.throws(() => videoArgument(['first.mp4', 'unknown.txt'], cwd), /one/);
+});
+
+test('registered projects reuse the same manifest but reject conflicting edits', t => {
+  const root = fixture(t), file = path.join(root, 'media/sequence.mp4');
+  const binding = { root, manifest: 'project.json' };
+  assert.equal(findVideoProject(file, [['first', binding], ['duplicate', binding]]).id, 'first');
+  fs.copyFileSync(path.join(root, 'project.json'), path.join(root, 'project-another-edit.json'));
+  assert.throws(() => findVideoProject(file, [
+    ['first', binding], ['another-edit', { root, manifest: 'project-another-edit.json' }]
+  ]), /Multiple registered projects/);
+});
+
+test('opening an MP4 matches the exact project and review version', t => {
+  const older = fixture(t), root = fixture(t);
+  const registered = [['older', { root: older }]];
+  const full = path.join(root, 'media/sequence.mp4');
+  assert.equal(findVideoProject(full, registered).binding.root, fs.realpathSync(root));
+  assert.equal(findVideoProject(path.join(older, 'media/sequence.mp4'), registered).id, 'older');
+  assert.equal(findVideoProject(path.join(root, 'media/focus.mp4'), registered).view, 'battle');
+  const other = JSON.parse(fs.readFileSync(path.join(root, 'project.json')));
+  other.video.path = 'media/opening.mp4';
+  delete other.focus;
+  fs.writeFileSync(path.join(root, 'project-portrait.json'), JSON.stringify(other));
+  assert.equal(findVideoProject(path.join(root, 'media/opening.mp4'), registered).binding.manifest, 'project-portrait.json');
+  const unrelated = path.join(root, 'media/unrelated.mp4');
+  fs.copyFileSync(full, unrelated);
+  assert.throws(() => findVideoProject(unrelated, registered), /No review project found for/);
+  fs.copyFileSync(path.join(root, 'project.json'), path.join(root, 'project-copy.json'));
+  assert.throws(() => findVideoProject(full, registered), /Multiple project manifests/);
+});
 
 test('generic project resolves a native timeline and complete editorial data', t => {
   const root = fixture(t);
@@ -53,7 +91,7 @@ test('native parsing rejects entity declarations and missing producers', t => {
   fs.writeFileSync(file, '<!DOCTYPE x [<!ENTITY x "x">]>' + xml);
   assert.throws(() => readTimeline(file), /DTD/);
   fs.writeFileSync(file, xml.replace('<entry producer="source-1"', '<entry producer="missing"'));
-  assert.throws(() => readTimeline(file), /嵌套片段/);
+  assert.throws(() => readTimeline(file), /Nested clips/);
 });
 
 test('invalid timeline ranges and duplicate tracks fail explicitly', t => {
@@ -61,21 +99,21 @@ test('invalid timeline ranges and duplicate tracks fail explicitly', t => {
   const doc = JSON.parse(fs.readFileSync(file));
   doc.tracks[0].clips[0].out = -1;
   fs.writeFileSync(file, JSON.stringify(doc));
-  assert.throws(() => readTimeline(file), /出点/);
+  assert.throws(() => readTimeline(file), /out point/);
   doc.tracks[0].clips[0].out = 4;
   doc.tracks[1].id = 0;
   fs.writeFileSync(file, JSON.stringify(doc));
-  assert.throws(() => readTimeline(file), /轨道/);
+  assert.throws(() => readTimeline(file), /track/);
 });
 
 test('project paths reject files outside the selected root', t => {
   const root = fixture(t);
-  assert.throws(() => existing(root, '../outside'), /不存在|超出/);
-  assert.throws(() => existing(root, __filename), /超出/);
+  assert.throws(() => existing(root, '../outside'), /does not exist|outside/);
+  assert.throws(() => existing(root, __filename), /outside/);
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'project.json')));
   manifest.video.path = __filename;
   fs.writeFileSync(path.join(root, 'project.json'), JSON.stringify(manifest));
-  assert.throws(() => loadProject({ root }), /超出/);
+  assert.throws(() => loadProject({ root }), /outside/);
 });
 
 test('mismatched editorial hashes are visible as warnings', t => {
@@ -85,7 +123,7 @@ test('mismatched editorial hashes are visible as warnings', t => {
   const review = JSON.parse(fs.readFileSync(file));
   review.timelineRevision = '0'.repeat(64);
   fs.writeFileSync(file, JSON.stringify(review));
-  assert.deepEqual(readReview(p, timeline), { data: null, warning: '审片标注绑定了其他剪辑版本，请更新项目标注文件。' });
+  assert.deepEqual(readReview(p, timeline), { data: null, warning: 'Review annotations belong to another edit revision. Update the project annotation file.' });
 });
 
 test('unknown project schema and invalid editorial clip mappings fail explicitly', t => {
@@ -93,14 +131,14 @@ test('unknown project schema and invalid editorial clip mappings fail explicitly
   const manifest = JSON.parse(fs.readFileSync(file));
   manifest.schema = 'production-canvas/v99';
   fs.writeFileSync(file, JSON.stringify(manifest));
-  assert.throws(() => loadProject({ root }), /不支持/);
+  assert.throws(() => loadProject({ root }), /unsupported/i);
   manifest.schema = 'production-canvas/v1';
   fs.writeFileSync(file, JSON.stringify(manifest));
   const p = loadProject({ root }), timeline = readTimeline(existing(root, p.review.timeline));
   const review = JSON.parse(fs.readFileSync(path.join(root, 'review.json')));
   review.clips[0].clip = 100;
   fs.writeFileSync(path.join(root, 'review.json'), JSON.stringify(review));
-  assert.throws(() => readReview(p, timeline), /片段标注/);
+  assert.throws(() => readReview(p, timeline), /Clip annotation/);
 });
 
 test('legacy opening/storyboard projects still bind without the generic schema', t => {
@@ -157,9 +195,9 @@ test('invalid editorial points and timewarp sources fail explicitly', t => {
   const review = JSON.parse(fs.readFileSync(reviewFile));
   review.cues[0].frame = 1.5;
   fs.writeFileSync(reviewFile, JSON.stringify(review));
-  assert.throws(() => readReview(p, readTimeline(file)), /整数/);
+  assert.throws(() => readReview(p, readTimeline(file)), /integer/);
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('>avformat<', '>timewarp<'));
-  assert.throws(() => readTimeline(file), /变速/);
+  assert.throws(() => readTimeline(file), /Timewarp/);
 });
 
 test('native resource paths honor the MLT root directory', t => {

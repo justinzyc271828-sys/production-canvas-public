@@ -1,0 +1,110 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "production-canvas",
+  "version": "0.2.0-preview.1",
+  "description": "Frame-linked annotations and surrounding visual context that help Codex understand author intent while creating and revising video.",
+  "author": {
+    "name": "Production Canvas"
+  },
+  "homepage": "https://github.com/justinzyc271828-sys/production-canvas-public",
+  "repository": "https://github.com/justinzyc271828-sys/production-canvas-public",
+  "license": "LicenseRef-Production-Canvas-Source-1.0",
+  "keywords": [
+    "video",
+    "film-review",
+    "director-notes",
+    "mcp",
+    "windows"
+  ],
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "onboardingSkill": "./skills/production-canvas/SKILL.md",
+      "interface": {
+        "displayName": "Production Canvas",
+        "shortDescription": "Frame annotations for Codex",
+        "longDescription": "Collaborate with Codex on video through exact-frame annotations. Pause a local review film, describe the intended change, and let Codex read the original annotation together with its version, frame anchor, and neighboring images. Return to the annotation when reviewing a new edit. Includes the English Windows desktop app, 15 local MCP tools, an isolated Python runtime, and an original synthetic sample. Generation and editing use separately connected tools. Local preview with official directory approval pending.",
+        "developerName": "Production Canvas",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/justinzyc271828-sys/production-canvas-public",
+        "supportURL": "https://github.com/justinzyc271828-sys/production-canvas-public/issues",
+        "termsOfServiceURL": "https://github.com/justinzyc271828-sys/production-canvas-public/blob/main/LICENSE",
+        "defaultPrompt": [
+          "Read my frame annotations and explain the intended changes using the surrounding images.",
+          "Pause on this frame, save my annotation, and return to it when we review the next video version.",
+          "Open the sample and show how a frame annotation gives Codex precise visual context."
+        ],
+        "brandColor": "#AD644E",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png",
+        "screenshots": [
+          "./assets/screenshot-1.png"
+        ]
+      },
+      "review": {
+        "commerce": false,
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Discover the running desktop app and its synthetic sample.",
+              "prompt": "Find my running Production Canvas window and describe the bundled sample's duration and frame rate.",
+              "tools_triggered": "list_instances, get_status, list_projects, get_review_state",
+              "expected_behavior": "Identify the selected local sample as 30 seconds, 720 frames, and 24 fps. Omit session credentials."
+            },
+            {
+              "description": "Play the complete synthetic sample.",
+              "prompt": "Play the full bundled sample and confirm when it reaches the end.",
+              "tools_triggered": "get_review_state, seek_frame, set_playback",
+              "expected_behavior": "Play from frame 0 through the last displayed frame 719, using fresh project, revision, and video identities."
+            },
+            {
+              "description": "Navigate to a real shot and an exact displayed frame.",
+              "prompt": "Go to shot S06 in the sample, then pause on frame 333.",
+              "tools_triggered": "get_review_state, navigate_shot, seek_frame, capture_frame",
+              "expected_behavior": "Locate S06 at frame 300, then show frame 333 with the same number visible in the synthetic picture."
+            },
+            {
+              "description": "Save one frame-linked direction and return to it.",
+              "prompt": "On sample frame 333, save the note 'Hold this synthetic shot a little longer before the next cut.' Resume briefly, pause, then return to that note.",
+              "tools_triggered": "get_review_state, open_direction, save_direction, set_playback, jump_to_direction",
+              "expected_behavior": "Save a single note at frame 333, reuse its operation ID only for an identical retry, and return to frame 333 after playback."
+            },
+            {
+              "description": "Inspect saved directions with surrounding visual context.",
+              "prompt": "Read the sample's saved directions and show the neighboring frames for each note.",
+              "tools_triggered": "get_review_state, read_direction_context",
+              "expected_behavior": "Return the full saved text and labelled contact sheets. For the note on frame 333, include available nearby frames and adjacent shot boundaries."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Reject an unknown or stale desktop instance.",
+              "prompt": "Use the all-zero instance ID without looking up a running window.",
+              "tools_triggered": "get_status",
+              "expected_behavior": "Reject the unregistered instance. Discover a live instance before performing further operations."
+            },
+            {
+              "description": "Reject an external URL where a local project manifest is required.",
+              "prompt": "Import https://example.com/project.json as a local Production Canvas project.",
+              "tools_triggered": "import_project",
+              "expected_behavior": "Reject the URL as an invalid local manifest path. Do not download it or switch the active project."
+            },
+            {
+              "description": "Reject a stale video identity before changing the playhead.",
+              "prompt": "Seek the selected sample to frame 0 using an all-zero video SHA-256.",
+              "tools_triggered": "seek_frame",
+              "expected_behavior": "Reject the mismatched video hash and preserve the current displayed frame."
+            }
+          ]
+        }
+      },
+      "publication": {
+        "release_notes": "English-only preview centered on Codex collaboration through frame annotations. The desktop interface, sample, MCP messages, onboarding, documentation, and listing are in English. Copy for Codex includes the original frame anchor and current resolved location."
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "method": "Replace literal Han characters in third-party Python source with equivalent Unicode escapes.",
+  "runtime_values": "preserved",
+  "files": [
+    "runtime/python/Lib/site-packages/httpx/_urls.py",
+    "runtime/python/Lib/site-packages/idna/uts46data.py",
+    "runtime/python/Lib/site-packages/pydantic/networks.py"
+  ],
+  "embedded_javascript_files": [
+    "node_modules/fast-xml-builder/lib/fxb.cjs",
+    "node_modules/fast-xml-builder/lib/fxb.min.js",
+    "node_modules/fast-xml-parser/lib/fxbuilder.min.js",
+    "node_modules/fast-xml-parser/lib/fxp.cjs",
+    "node_modules/fast-xml-parser/lib/fxp.min.js",
+    "node_modules/fast-xml-parser/lib/fxparser.min.js"
+  ]
+}

@@ -45,6 +45,28 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(result[0]["instance_id"], row["instance_id"])
         self.assertNotIn(row["token"], json.dumps(result))
 
+    def test_descriptor_requires_the_same_physical_parent_directory(self):
+        path = self.save(self.row())
+        redirected = self.registry / "redirected" / path.name
+        original_resolve = Path.resolve
+        original_samefile = Path.samefile
+
+        def resolve(item, *args, **kwargs):
+            return redirected if item == path else original_resolve(item, *args, **kwargs)
+
+        def samefile(item, other):
+            if item == redirected.parent and other == self.registry:
+                return True
+            return original_samefile(item, other)
+
+        with patch.object(Path, "resolve", resolve), patch.object(Path, "samefile", samefile):
+            self.assertEqual(adapter.read_descriptor(path, self.registry)["pid"], os.getpid())
+        with tempfile.TemporaryDirectory() as outside:
+            unrelated = Path(outside) / path.name
+            unrelated.write_text(path.read_text(encoding="utf8"), encoding="utf8")
+            with self.assertRaises(ValueError):
+                adapter.read_descriptor(unrelated, self.registry)
+
     def test_descriptor_rejects_external_and_ambiguous_origins(self):
         for origin in ("https://127.0.0.1:12345", "http://localhost:12345", "http://example.com:12345",
                        "http://127.0.0.1:12345/x", "http://u:p@127.0.0.1:12345", "http://127.0.0.1"):
@@ -106,6 +128,35 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(result[1].type, "image")
         self.assertEqual(result[1].mimeType, "image/png")
 
+    def test_read_directions_keeps_text_and_deduplicates_frame_requests_by_view(self):
+        row = self.row()
+        self.save(row)
+        context = {"views": {"s03": {"sha256": "c" * 64}, "battle": {"sha256": "d" * 64}}, "directions": [
+            {"status": "located", "text": "Complete original text\nSecond line", "resolved": {"view": "s03"},
+             "frames": [{"frame": frame} for frame in range(9)]},
+            {"status": "located", "resolved": {"view": "s03"}, "frames": [{"frame": 3}]},
+            {"status": "located", "resolved": {"view": "battle"}, "frames": [{"frame": 3}]},
+            {"status": "unlocated", "text": "Keep this note"},
+        ]}
+
+        def reply(_row, _route, args):
+            if args["command"] == "list_direction_context":
+                return context
+            return {"view": args["view"], "video_sha256": context["views"][args["view"]]["sha256"],
+                    "tiles": [{"frame": frame} for frame in args["frames"]],
+                    "jpeg_base64": base64.b64encode(b"\xff\xd8\xff").decode()}
+
+        with patch.object(adapter, "request", side_effect=reply) as request:
+            result = adapter.read_direction_context(row["instance_id"], "test", "b" * 64, "c" * 64)
+        data = json.loads(result[0].text)
+        self.assertEqual(data["directions"], context["directions"])
+        self.assertEqual([sheet["image_index"] for sheet in data["sheets"]], [1, 2, 3])
+        self.assertTrue(all(image.mimeType == "image/jpeg" for image in result[1:]))
+        batches = [call.args[2] for call in request.call_args_list[1:]]
+        self.assertEqual([(batch["view"], batch["frames"]) for batch in batches],
+                         [("s03", list(range(8))), ("s03", [8]), ("battle", [3])])
+        self.assertTrue(all(batch["expected_video_sha256"] == "c" * 64 for batch in batches))
+
     def test_import_uses_the_guarded_project_route(self):
         manifest = self.registry / "project.json"
         manifest.write_text("{}")
@@ -118,8 +169,9 @@ class AdapterTests(unittest.TestCase):
 
     def test_tool_inventory_and_annotations(self):
         tools = asyncio.run(adapter.mcp.list_tools())
-        self.assertEqual(len(tools), 14)
+        self.assertEqual(len(tools), 15)
         self.assertTrue(next(tool for tool in tools if tool.name == "list_instances").annotations.readOnlyHint)
+        self.assertTrue(next(tool for tool in tools if tool.name == "read_direction_context").annotations.readOnlyHint)
         self.assertFalse(next(tool for tool in tools if tool.name == "save_direction").annotations.readOnlyHint)
         self.assertFalse(any("approve" in tool.name or "delete" in tool.name for tool in tools))
 

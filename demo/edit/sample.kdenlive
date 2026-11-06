@@ -214,11 +214,11 @@
 <entry producer="source-17" in="0" out="719"/>
 </playlist><playlist id="audio-alt"/>
 <tractor id="video-track">
-<property name="kdenlive:track_name">画面</property>
+<property name="kdenlive:track_name">Picture</property>
 <track producer="video" hide="audio"/><track producer="video-alt" hide="audio"/>
 </tractor>
 <tractor id="audio-track">
-<property name="kdenlive:track_name">混音</property>
+<property name="kdenlive:track_name">Mix</property>
 <property name="kdenlive:audio_track">1</property>
 <track producer="audio" hide="video"/><track producer="audio-alt" hide="video"/>
 </tractor>

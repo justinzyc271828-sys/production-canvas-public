@@ -53,13 +53,29 @@ project-only import route.
    for each new note. Reuse that identifier for a retry of the exact same note.
 5. Call `jump_to_direction` with its saved identifier. `capture_frame` returns
    a real app-window PNG and the corresponding displayed-frame state.
+6. For batch review, call `read_direction_context` with the same active project,
+   revision and video hash. One tool call returns all saved direction text,
+   the original anchors, current resolved locations, and JPEG contact sheets.
+   Match each note's frames to sheet tiles by view and frame number. The
+   `image_index` counts image blocks from one. Group by the resolved shot and
+   keep unanchored and unlocated directions in a separate group.
 
-The fourteen tools cover instance discovery, project selection,
+The tools cover instance discovery, project selection,
 playback, shot and frame navigation, capture and frame-linked directions.
 They do not expose arbitrary JavaScript, shell commands, review approval,
 publication or paid generation. Saved directions remain in the selected
 project's normal `.production-canvas` store. Use a separate project copy when
 writing technical verification notes.
+
+Batch review samples the marked frame, two frames on each side, and the
+previous shot's last frame and next shot's first frame where supported.
+It uses the registered review video for each resolved view and reports that
+video's hash. Adjacent shots come from the picture track and any project shot
+markers within it. Frames outside the view's bounds are omitted. The opening
+view has no shot ranges. A relocated direction keeps its original anchor and
+reports context from the resolved location in the current edit. Unverified
+frames are marked unavailable. Contact sheets contain still images. The
+foreground player and any open direction draft stay in place.
 
 The app serializes bridge commands and rejects stale project, revision and
 video identities before changing playback or notes. HTTP redirects are rejected.

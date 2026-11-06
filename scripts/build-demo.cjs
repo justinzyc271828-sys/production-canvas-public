@@ -118,7 +118,7 @@ async function main() {
     profile:{fps_num:fps,fps_den:1,width,height},
     bin:[...clips.map((clip,index)=>({id:clip.clip_id,name:clip.shot,source:'../media/sequence.mp4',duration:30,type:'video'})),
       {id:'17',name:'Original pulse',source:'../media/tone.wav',duration:30,type:'audio'}],
-    tracks:[{id:0,name:'画面',type:'video',clips},{id:1,name:'混音',type:'audio',clips:[{clip_id:'17',in:0,out:30,position:0,filters:[]}]}],
+    tracks:[{id:0,name:'Picture',type:'video',clips},{id:1,name:'Mix',type:'audio',clips:[{clip_id:'17',in:0,out:30,position:0,filters:[]}]}],
     transitions:[]};
   // CLI-Anything paths are project-root relative, whereas MLT paths are XML-file relative.
   const cli=structuredClone(json);
@@ -161,11 +161,11 @@ async function main() {
     '<entry producer="source-17" in="0" out="719"/>',
     '</playlist><playlist id="audio-alt"/>',
     '<tractor id="video-track">',
-    properties({ 'kdenlive:track_name': '画面' }),
+    properties({ 'kdenlive:track_name': 'Picture' }),
     '<track producer="video" hide="audio"/><track producer="video-alt" hide="audio"/>',
     '</tractor>',
     '<tractor id="audio-track">',
-    properties({ 'kdenlive:track_name': '混音', 'kdenlive:audio_track': 1 }),
+    properties({ 'kdenlive:track_name': 'Mix', 'kdenlive:audio_track': 1 }),
     '<track producer="audio" hide="video"/><track producer="audio-alt" hide="video"/>',
     '</tractor>',
     '<tractor id="' + sequence + '" in="0" out="719">',
@@ -197,18 +197,18 @@ async function main() {
   fs.writeFileSync(path.join(root,'edit/sample.kdenlive'),xml);
   const sha=file=>createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex');
   const review={timelineRevision:sha('edit/sample.kdenlive'),
-    chapters:[{title:'认识画面',start:0,end:216,color:'#526c80'},{title:'短镜头练习',start:216,end:360,color:'#717753'},
-      {title:'停帧与指令',start:360,end:540,color:'#9c7560'},{title:'回到全片',start:540,end:720,color:'#766485'}],
+    chapters:[{title:'Read the frame',start:0,end:216,color:'#526c80'},{title:'Short-shot practice',start:216,end:360,color:'#717753'},
+      {title:'Pause and annotate',start:360,end:540,color:'#9c7560'},{title:'Return to the film',start:540,end:720,color:'#766485'}],
     shots:cuts.slice(0,-1).map((frame,index)=>({frame,title:'S'+String(index+1).padStart(2,'0')})),
     clips:clips.map((clip,index)=>({track:0,clip:index,shot:clip.shot,placeholder:placeholders.includes(index),
       ...(placeholders.includes(index)?{thumbnail:{path:'media/shot-'+(index+1)+'.png',sha256:sha('media/shot-'+(index+1)+'.png')}}:{})})),
-    cues:[{frame:300,title:'连续短镜头'},{frame:420,title:'在这一帧记指令'},{frame:612,title:'对照节拍'}],
-    sounds:[{frame:0,title:'原创建拍声'},{frame:360,title:'旋律变化'}],
+    cues:[{frame:300,title:'Rapid cuts'},{frame:420,title:'Annotate this frame'},{frame:612,title:'Compare the beat'}],
+    sounds:[{frame:0,title:'Original pulse'},{frame:360,title:'Melody change'}],
     music:{bpm:120,beatsPerBar:4,start:0,end:720},
     sources:['Original programmatic picture and PCM audio in scripts/build-demo.cjs']};
   fs.writeFileSync(path.join(root,'review.json'),JSON.stringify(review,null,2)+'\n');
-  const project={schema:'production-canvas/v1',title:'示例影片 · 审片练习',timeline:'edit/sample.kdenlive',
-    video:{path:'media/sequence.mp4',label:'全片候选'},focus:{path:'media/focus.mp4',label:'短镜头练习',start:264,end:420},
+  const project={schema:'production-canvas/v1',title:'Frame Annotation Lab',timeline:'edit/sample.kdenlive',
+    video:{path:'media/sequence.mp4',label:'Full-film candidate'},focus:{path:'media/focus.mp4',label:'Short-shot practice',start:264,end:420},
     mix:'media/tone.wav',review:'review.json',notes:'README.md'};
   fs.writeFileSync(path.join(root,'project.json'),JSON.stringify(project,null,2)+'\n');
   fs.writeFileSync(path.join(root,'provenance.json'),JSON.stringify({generator:'scripts/build-demo.cjs',fps,frames:720,width,height,

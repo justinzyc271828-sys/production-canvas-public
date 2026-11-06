@@ -7,8 +7,8 @@ documentation and automated tests.
 The Production Canvas Source License 1.0 covers the original repository
 content, including the demonstration media and interface artwork. It allows
 commercial creative work and restricts paid software distribution and paid
-hosted access. The English license text governs. The Chinese translation
-explains the same terms for the primary interface language.
+hosted access. The English license text governs. The current source tree and
+preview package use English throughout.
 
 Third-party components retain their own licenses. Their notices are in
 THIRD_PARTY_NOTICES.md and in the packaged runtime.
@@ -16,7 +16,9 @@ THIRD_PARTY_NOTICES.md and in the packaged runtime.
 ## Release verification
 
 - Run the Node test suite and the actual Electron sample workflow.
-- Bind the release tag to the executable's embedded build commit.
+- Bind the release tag to its source and record the executable's embedded build
+  identity. The English preview uses the source fingerprint documented in
+  `docs/english-preview.md`.
 - Record SHA-256 checksums for downloadable release files.
 - State the code-signing status. The initial Windows portable release is
   unsigned.

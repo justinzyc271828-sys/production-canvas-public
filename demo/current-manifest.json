@@ -3,7 +3,7 @@
     "status": "SAMPLE",
     "seconds": 4,
     "video": {"path":"media/opening.mp4"},
-    "review_markers":[{"label":"中点","seconds":2}],
+    "review_markers":[{"label":"Midpoint","seconds":2}],
     "cartoon_original_audio_4k":{"path":"media/sequence.mp4"}
   },
   "active_s03_storyboard": {

@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'">
-<title>制作画布</title>
+<title>Production Canvas</title>
 <link rel="stylesheet" href="./canvas.css">
 <script src="./canvas-ui.js" defer></script>
 <script src="./note-location.js" defer></script>
@@ -15,108 +15,114 @@
   <div id="workspace" hidden>
     <header class="toolbar">
       <div class="project-group">
-        <button id="project-menu" class="brand" type="button" aria-label="项目菜单">▣　制作画布</button><span class="slash">/</span>
-        <h1 id="title" class="sr-only">制作画布</h1>
-        <select id="project" aria-label="当前项目"></select><span class="slash">/</span>
-        <select id="review-version" aria-label="审片版本"></select>
+        <button id="project-menu" class="brand" type="button" aria-label="Project menu">▣ Production Canvas</button><span class="slash">/</span>
+        <h1 id="title" class="sr-only">Production Canvas</h1>
+        <select id="project" aria-label="Current project"></select><span class="slash">/</span>
+        <select id="review-version" aria-label="Review version"></select>
         <span id="film-summary" class="hint"></span>
       </div>
-      <nav aria-label="项目模式">
-        <button id="return-review" type="button" aria-pressed="true"><canvas id="return-frame" width="64" height="36" hidden></canvas><span id="return-label">审片</span></button>
-        <button id="comfy-canvas" type="button" aria-pressed="false" hidden>ComfyUI 画布</button>
+      <nav aria-label="Project mode">
+        <button id="return-review" type="button" aria-pressed="true"><canvas id="return-frame" width="64" height="36" hidden></canvas><span id="return-label">Review</span></button>
+        <button id="comfy-canvas" type="button" aria-pressed="false" hidden>ComfyUI workspace</button>
       </nav>
     </header>
-    <div id="comfy-status" hidden><span id="graph-info"></span><button id="retry-comfy" type="button" hidden>重试</button></div>
+    <div id="comfy-status" hidden><span id="graph-info"></span><button id="retry-comfy" type="button" hidden>Retry</button></div>
     <div class="screen" id="review">
-      <section class="monitor" aria-label="审片">
+      <section class="monitor" aria-label="Review">
         <div id="player" tabindex="-1"></div>
         <div class="player-bar">
           <div class="clock"><strong id="play-time">00:00.00</strong><span id="total-time"></span><span id="frame-number"></span></div>
           <div class="transport">
-            <button id="prev-cut" type="button" aria-label="上一个剪辑点">|◀</button>
-            <button id="prev-frame" type="button" aria-label="后退一帧">‹</button>
-            <button id="play-toggle" class="primary" type="button" aria-label="播放">▶</button>
-            <button id="next-frame" type="button" aria-label="前进一帧">›</button>
-            <button id="next-cut" type="button" aria-label="下一个剪辑点">▶|</button>
+            <button id="prev-cut" type="button" aria-label="Previous cut">|◀</button>
+            <button id="prev-frame" type="button" aria-label="Previous frame">‹</button>
+            <button id="play-toggle" class="primary" type="button" aria-label="Play">▶</button>
+            <button id="next-frame" type="button" aria-label="Next frame">›</button>
+            <button id="next-cut" type="button" aria-label="Next cut">▶|</button>
           </div>
           <div class="player-actions">
-            <button id="loop-shot" type="button" aria-pressed="false" disabled>↻ 循环本镜</button>
-            <button id="speed" type="button" aria-label="播放速度">1×</button>
-            <button id="mute" type="button" aria-label="静音" aria-pressed="false">音量</button>
-            <button id="note-at-time" type="button" disabled>记指令</button>
-            <button id="inspect-toggle" type="button" aria-controls="clip-panel">检查</button>
+            <button id="loop-shot" type="button" aria-pressed="false" disabled>↻ Loop shot</button>
+            <button id="speed" type="button" aria-label="Playback speed">1×</button>
+            <button id="mute" type="button" aria-label="Mute" aria-pressed="false">Volume</button>
+            <button id="note-at-time" type="button" disabled>Annotate</button>
+            <button id="inspect-toggle" type="button" aria-controls="clip-panel">Inspect</button>
+            <button id="review-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen" hidden>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path class="expand-icon" d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" />
+                <path class="exit-icon" d="M2 6h4V2m8 4h-4V2M6 14v-4H2m8 4v-4h4" />
+              </svg>
+            </button>
           </div>
         </div>
         <form id="quick-note" class="quick-note row" hidden>
-          <label id="inline-note-label" for="inline-note">记指令</label>
-          <input id="inline-note" required maxlength="16000" placeholder="写一句指令，Enter 保存，Esc 放弃">
-          <button type="submit">保存</button>
-          <button id="detail-note" type="button">展开写详细</button>
-          <button id="retarget-note" type="button" hidden>改记到当前帧</button>
+          <label id="inline-note-label" for="inline-note">Annotate</label>
+          <input id="inline-note" required maxlength="16000" placeholder="Describe the change. Enter saves. Esc cancels.">
+          <button type="submit">Save</button>
+          <button id="detail-note" type="button">Add details</button>
+          <button id="retarget-note" type="button" hidden>Use current frame</button>
         </form>
       </section>
-      <aside class="inspector" id="clip-panel" aria-label="检查器">
-        <button id="close-inspector" type="button" hidden>‹ 本版概况</button>
+      <aside class="inspector" id="clip-panel" aria-label="Inspector">
+        <button id="close-inspector" type="button" hidden>‹ Version overview</button>
         <div id="inspector"></div>
         <div id="markers" class="row"></div>
         <div class="inspector-tools row">
-          <button type="button" id="screening" hidden>连续审片</button>
-          <button type="button" data-panel="materials">素材</button>
-          <button type="button" data-panel="direction">导演指令</button>
-          <button type="button" id="toggle-engine" data-panel="engineering">工程</button>
+          <button type="button" id="screening" hidden>Play review sequence</button>
+          <button type="button" data-panel="materials">Sources</button>
+          <button type="button" data-panel="direction">Frame annotations</button>
+          <button type="button" id="toggle-engine" data-panel="engineering">Details</button>
         </div>
       </aside>
     </div>
-    <section class="timeline" id="edit" aria-label="时间线">
+    <section class="timeline" id="edit" aria-label="Timeline">
       <div class="timeline-tools">
-        <div class="control-group" aria-label="缩放预设">
-          <button id="zoom-full" type="button">全片</button><button id="zoom-act" type="button">本幕</button><button id="zoom-selection" type="button">选中</button>
+        <div class="control-group" aria-label="Zoom presets">
+          <button id="zoom-full" type="button">Full film</button><button id="zoom-act" type="button">Chapter</button><button id="zoom-selection" type="button">Selection</button>
         </div>
-        <button id="zoom-out" type="button" aria-label="缩小">−</button><button id="zoom-in" type="button" aria-label="放大">＋</button>
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="zoom-in" type="button" aria-label="Zoom in">＋</button>
         <span id="timeline-range" class="hint"></span>
         <span class="spacer"></span>
-        <label id="track-filter" hidden><input id="active-tracks" type="checkbox">只看有片段的轨道</label>
-        <div class="control-group" aria-label="刻度">
-          <button id="ruler-time" type="button" aria-pressed="true">时间</button><button id="ruler-bars" type="button" aria-pressed="false">小节</button>
+        <label id="track-filter" hidden><input id="active-tracks" type="checkbox">Show active tracks only</label>
+        <div class="control-group" aria-label="Ruler">
+          <button id="ruler-time" type="button" aria-pressed="true">Time</button><button id="ruler-bars" type="button" aria-pressed="false">Bars</button>
         </div>
-        <div class="control-group" aria-label="时间线高度">
-          <button id="collapse-tracks" type="button">收起</button><button id="standard-tracks" type="button">标准</button><button id="expand-tracks" type="button">展开</button>
+        <div class="control-group" aria-label="Timeline height">
+          <button id="collapse-tracks" type="button">Compact</button><button id="standard-tracks" type="button">Standard</button><button id="expand-tracks" type="button">Expanded</button>
         </div>
       </div>
       <div id="overview"></div>
       <div id="review-rows"></div>
-      <div class="timeline-scroll" id="timeline-scroll" tabindex="0" aria-label="Kdenlive 工程轨"><div id="tracks"></div></div>
+      <div class="timeline-scroll" id="timeline-scroll" tabindex="0" aria-label="Kdenlive tracks"><div id="tracks"></div></div>
     </section>
     <dialog id="side-panel" aria-labelledby="panel-title">
       <div class="dialog-shell">
-        <header class="section-head"><h2 id="panel-title"></h2><button type="button" id="close-panel">关闭</button></header>
+        <header class="section-head"><h2 id="panel-title"></h2><button type="button" id="close-panel">Close</button></header>
         <div class="dialog-content">
           <p id="panel-status" class="notice" role="status" hidden></p>
           <section id="materials" hidden>
-            <a id="storyboard" target="_blank" rel="noopener">打开分镜资料</a>
+            <a id="storyboard" target="_blank" rel="noopener">Open storyboard</a>
             <div class="assets" id="assets"></div>
           </section>
           <section id="direction" hidden>
-            <details id="new-brief"><summary>新建指令或粘贴讨论</summary>
+            <details id="new-brief"><summary>New annotation or discussion</summary>
               <form id="brief">
-                <div class="form-row"><label>简短标题<input name="title" required maxlength="100" placeholder="例如：调整 3-05 的停顿"></label><label>执行路线<select name="route" required></select></label></div>
-                <label>对象<input name="target" required maxlength="120" placeholder="S03、镜头编号或素材"></label>
-                <label>指令／讨论原文<textarea name="text" required maxlength="16000" rows="4" placeholder="例如：这里再停半秒。"></textarea></label>
-                <button class="primary" type="submit">保存指令</button>
+                <div class="form-row"><label>Title<input name="title" required maxlength="100" placeholder="Example - adjust the pause in shot 3-05"></label><label>Production tool<select name="route" required></select></label></div>
+                <label>Target<input name="target" required maxlength="120" placeholder="S03, shot ID, or source"></label>
+                <label>Original annotation or discussion<textarea name="text" required maxlength="16000" rows="4" placeholder="Example - hold this frame for another half second."></textarea></label>
+                <button class="primary" type="submit">Save annotation</button>
               </form>
             </details>
             <div id="tasks" class="items"></div>
           </section>
           <section id="engineering" hidden>
             <div id="bindings"></div>
-            <div class="section-head jobs-header"><h3>本地任务</h3><button id="run-references" type="button">取三机位参考图</button></div>
+            <div class="section-head jobs-header"><h3>Local jobs</h3><button id="run-references" type="button">Create three-angle references</button></div>
             <div id="jobs" class="items"></div>
           </section>
         </div>
       </div>
     </dialog>
   </div>
-  <div id="status" class="notice" role="status" aria-live="polite">正在读取项目记录…</div>
+  <div id="status" class="notice" role="status" aria-live="polite">Loading project...</div>
 </main>
 </body>
 </html>

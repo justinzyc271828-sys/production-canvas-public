@@ -1,119 +1,93 @@
-# Production Canvas / 制作画布
+# Production Canvas
 
-A local Windows review desk for a filmmaker working with AI assistants.
-Pause on a frame, write a direction, and return to that frame when reviewing
-the next candidate.
+Frame annotations that keep Codex aligned with the author's intent.
 
-[中文说明](README.zh-CN.md) · [Download v1.5.0](https://github.com/justinzyc271828-sys/production-canvas-public/releases/tag/v1.5.0)
+Pause on a video frame and describe the change you want. Codex can read your
+original words together with the video version, frame anchor, shot position,
+and surrounding images. Return to the annotation when reviewing the next edit.
 
-![The original synthetic review exercise](docs/sample-review.png)
+[Download the English preview](https://github.com/justinzyc271828-sys/production-canvas-public/releases/tag/v0.2.0-preview.1-english)
 
-## Start in three steps
+![Frame annotations in the original synthetic sample](docs/sample-review.png)
 
-1. Download the Windows x64 portable EXE from the release page and run it.
-2. Try the bundled 30-second sample. It contains 720 numbered frames, 16
-   picture clips, four chapters, cue points and three placeholder clips.
-3. Press Space to pause, N to write a direction, and Enter to save it.
-   Resume playback and click the saved marker to return.
+## Try the complete package
 
-The interface is Chinese. The sample needs no account, Python installation
-or production service. The current EXE is unsigned, so Windows may show an
-unknown-publisher warning. Compare its SHA-256 with SHA256SUMS.txt on the
-release page. [Windows signing notes](docs/windows-signing.md)
+1. Download and extract the complete English Windows x64 plugin ZIP. Run
+   `scripts/start-canvas.ps1` from the extracted package.
+2. Open `sample/project.json`. Press **Space** to play or pause, **N** to
+   annotate, and **Enter** to save. Click a marker to return to its frame.
+3. Install the extracted package as a local plugin in Codex, or register
+   `scripts/start-mcp.ps1` as a stdio MCP server. Ask Codex to read the saved
+   annotations and explain the intended changes using the neighboring images.
+
+The package includes desktop version `1.5.1-english.1`, all 15 local MCP tools,
+an isolated Python 3.12 runtime, and an original 30-second sample. Its executable
+is unsigned. Compare the download with the release's `SHA256SUMS.txt`.
+
+## Collaborate through frame annotations
+
+`read_direction_context` returns saved text, original anchors, resolved positions,
+and labelled contact sheets. **Copy for Codex** also carries the original frame
+anchor and current resolved location. Use separately connected generation and
+editing tools for the requested revision, then return to the annotations when
+reviewing the updated video.
+
+## Run from source
+
+The source checkout contains the application and plugin sources. The portable
+executable and isolated Python runtime are supplied in the release ZIP.
+Use Node.js 24 and the dependencies pinned in `package-lock.json`.
+
+```powershell
+npm ci
+npm run check
+npm start
+```
+
+The [MCP reference](mcp/README.md) describes Python development setup, session
+discovery, version guards, and safe retries. The [workflow skill](skills/production-canvas/SKILL.md)
+describes the collaboration flow. Optional production tools are connected separately.
 
 ## Review your own film
 
-Put a rendered MP4 and its matching Kdenlive edit in a directory. Add
-project.json, then choose **项目 → 打开项目清单…**.
+Keep a constant-frame-rate MP4 and its matching Kdenlive edit in one project
+folder. Add a manifest and choose **Project → Open project manifest...**.
 
-    {
-      "schema": "production-canvas/v1",
-      "title": "My film",
-      "video": { "path": "media/review.mp4", "label": "Full review" },
-      "timeline": "edit/film.kdenlive"
-    }
+```json
+{
+  "schema": "production-canvas/v1",
+  "title": "My film",
+  "video": { "path": "media/review.mp4", "label": "Full review" },
+  "timeline": "edit/film.kdenlive"
+}
+```
 
-The [project format](docs/project-format.md) documents optional chapters,
-shots, placeholders, sound cues, music bars and focus exports.
-The [complete sample](demo/project.json) is an editable starting point.
+The [project format](docs/project-format.md) explains supported timelines,
+chapters, shot markers, focus exports, and saved frame anchors. The
+[source sample](demo/project.json) is an editable starting point.
 
-## What it does
+## Verification and provenance
 
-- **Frame-linked directions.** Labels use the displayed video frame.
-  Directions retain their version, frame, source position and shot ID when
-  available. Their position is recalculated after an edit. Missing targets
-  remain visible for review.
-- **Review timeline.** Actual Kdenlive tracks and editorial markers have
-  separate rows. Short clips and dense directions can be expanded from
-  groups. Timeline zoom and height are independent.
-- **Production handoff.** Copy a direction for an AI assistant, then inspect
-  a returned candidate with a SHA-256 receipt. A configured local ComfyUI
-  workflow opens read-only inside the same window.
+Run `npm run verify:sample` and `npm run verify:opening` on Windows. These use
+isolated profiles and synthetic media. See [verification](docs/verification.md)
+and [the English preview provenance](docs/english-preview.md) for the source
+fingerprint, package identity, and tested scope.
 
-The API listens on loopback and requires a fresh desktop-session token.
-Project media and directions stay in the selected local directory.
+The current preview passed 42 application tests and 10 MCP adapter tests,
+720 visual frame-marker checks, and 30 random pauses. Testing also covered
+saved annotations, exact-frame return, file opening, and local plugin installation.
+A separate clean-machine installation remains unverified.
 
-## Local MCP control
+## Privacy, license, and support
 
-The local working build includes an authenticated MCP bridge for project
-selection, playback, frame and shot navigation, screenshots and frame-linked
-directions. The Python adapter and connection instructions are in
-[mcp/README.md](mcp/README.md). Its tools require the current project, timeline
-revision and video hash for changes. This addition is available in the local
-MCP-enabled build and source checkout.
+Project files and review records are local. Requested annotations, paths,
+screenshots, and frame images are returned to the connected AI client under
+that client's privacy settings. Read the [privacy information](privacy.md).
 
-The [MCP implementation handoff](docs/mcp-handoff-2026-11-04.md) records the
-verified scope, source snapshot and remaining distribution boundary.
+The Production Canvas Source License 1.0 permits free redistribution and
+commercial creative work under its terms. Paid software distribution and
+paid hosted access require separate permission. Third-party components retain
+their own licenses. This community preview has OpenAI directory review pending.
 
-## Keyboard
-
-| Key | Action |
-| --- | --- |
-| Space | Play or pause |
-| Left / Right | Previous or next frame |
-| Alt + Left / Right | Previous or next cut |
-| N | Write a quick direction |
-| Enter / Esc | Save or discard the quick direction |
-| [ / ] | Previous or next direction |
-| Shift + Z | Zoom to the selected clip |
-| Ctrl + 0 | Show the full film |
-| Ctrl + 1 / Ctrl + 2 | Review view / configured ComfyUI view |
-
-Text fields, selects and open dialogs retain their normal keyboard behavior.
-
-## Build and verify
-
-Use Node.js 24 on Windows x64.
-
-    npm ci
-    npm run check
-    npm run verify:sample
-    npm run pack:win
-
-The tests cover project formats, direction relocation, candidate hashes and
-the actual Electron review flow. The desktop check reads the visual frame
-marker through all 720 sample frames and checks 30 playback pauses.
-Packaging requires a clean commit and embeds its full SHA.
-[Verification instructions](docs/verification.md)
-
-## Current scope
-
-The native Kdenlive reader supports ordinary tracks, blanks and cuts.
-Nested sequences and timewarp clips need a flattened review edit.
-Playback uses the rendered review video. The optional Kdenlive adapter can
-render working copies of supported CLI-Anything JSON edits.
-ComfyUI and other production tools are separate local installations.
-
-## License
-
-The Production Canvas Source License 1.0 permits personal use and commercial
-creative work, including paid video projects. Free modified distributions
-are allowed under its conditions. Selling the software and providing paid
-hosted access require separate written permission.
-
-The same license covers this repository's original demo media and artwork.
-Third-party components retain their own terms.
-[License](LICENSE) · [中文许可](LICENSE.zh-CN.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-This project is distributed as source-available software.
-Report reproducible issues through this repository's Issues page.
+[License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) ·
+[Report an issue](https://github.com/justinzyc271828-sys/production-canvas-public/issues)

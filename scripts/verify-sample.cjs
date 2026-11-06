@@ -8,6 +8,12 @@ const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const output = path.resolve(process.argv[2] || path.join(root, 'release', 'sample-verification'));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-desktop-test-'));
+const alternate = path.join(profile, 'alternate-project');
+fs.cpSync(path.join(root, 'demo'), alternate, { recursive: true });
+fs.writeFileSync(path.join(profile, 'canvas-settings.json'), JSON.stringify({
+  projects: { 'sample-alternate': { root: alternate, manifest: 'project.json', title: 'Alternate sample' } },
+  tools: {}, active: 'demo'
+}));
 fs.mkdirSync(output, { recursive: true });
 const reportFile = path.join(output, 'result.json');
 const executable = process.env.CANVAS_EXECUTABLE || require('electron');
@@ -15,13 +21,20 @@ const args = process.env.CANVAS_EXECUTABLE ? [] : [root];
 args.push('--profile=' + profile, '--verify=' + reportFile, '--verify-write=isolated-copy',
   '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling', '--disable-renderer-backgrounding');
 if (process.env.CANVAS_CAPTURE) args.push('--capture-dir=' + path.join(output, 'screenshots'));
+if (process.env.CANVAS_DEVICE_SCALE) args.push('--force-device-scale-factor=' + process.env.CANVAS_DEVICE_SCALE);
 
 try {
   execFileSync(executable, args, { cwd: root, timeout: 240000, stdio: 'pipe' });
   const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
   if (report.error || report.layout.chapters !== 4 || report.layout.placeholders !== 3 ||
       report.layout.tracks[0].clips !== 16 || !report.checkpoints.note?.persisted ||
-      report.checkpoints.displayedFrames?.scanned !== 720 || report.checkpoints.displayedFrames?.randomPauses !== 30) {
+      !report.checkpoints.note?.compactMarker || !report.checkpoints.note?.originalTextPreserved ||
+      !report.checkpoints.note?.compactCluster || !report.checkpoints.note?.expandedMarkers || !report.checkpoints.note?.clusterJump ||
+      !report.checkpoints.note?.matchingNumber || !report.checkpoints.note?.highlightedAdjacent || !report.checkpoints.note?.markersAligned ||
+      report.checkpoints.displayedFrames?.scanned !== 720 || report.checkpoints.displayedFrames?.randomPauses !== 30 ||
+      !report.checkpoints.projectSelection?.draftPreserved || !report.checkpoints.projectSelection?.unknownProjectRejected ||
+      !report.checkpoints.thumbnailPixels?.expanded ||
+      (process.env.CANVAS_EXPECTED_BUILD && report.buildCommit !== process.env.CANVAS_EXPECTED_BUILD)) {
     throw Error('Incomplete sample verification: ' + JSON.stringify(report));
   }
   console.log(JSON.stringify({ result: 'passed', version: report.version, buildCommit: report.buildCommit, profile,

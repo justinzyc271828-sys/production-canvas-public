@@ -24,6 +24,7 @@ mcp = FastMCP(
     "Production Canvas",
     instructions=(
         "Control the user's own local Production Canvas through its authenticated MCP bridge. "
+        "Read frame annotations with surrounding images to understand author intent before planning video revisions. "
         "List running instances first and use an exact instance_id. Read the active review state "
         "before mutations, then supply its project_id, revision and video SHA-256. "
         "Notes are local director records. Save only requested notes and reuse operation_id on retries. "
@@ -47,7 +48,9 @@ def registry_path() -> Path:
 
 
 def read_descriptor(path: Path, registry: Path) -> dict:
-    if path.is_symlink() or not path.resolve().is_relative_to(registry.resolve()):
+    # Windows can redirect files inside Roaming while exposing the directory
+    # under its original name. Compare the actual parent directory identity.
+    if path.is_symlink() or not path.resolve().parent.samefile(registry):
         raise ValueError("Session descriptor leaves the configured registry")
     if path.stat().st_size > 65536:
         raise ValueError("Session descriptor is too large")
@@ -263,6 +266,49 @@ def capture_frame(instance_id: str, project_id: str, expected_revision: str,
         raise ValueError("Canvas did not return a PNG capture")
     return [TextContent(type="text", text=json.dumps(result.get("state", {}), ensure_ascii=False)),
             Image(data=raw, format="png").to_image_content()]
+
+
+@mcp.tool(annotations=READ_ONLY, structured_output=False)
+def read_direction_context(instance_id: str, project_id: str, expected_revision: str,
+                           expected_video_sha256: str) -> list[TextContent | ImageContent]:
+    """Read all saved directions in the active project, with full text and frame context.
+
+    Returns original anchors, current locations, neighboring shot ranges and
+    labelled contact sheets. Each located direction requests its anchor, up to
+    two adjacent frames on either side, and the preceding and following shots'
+    boundary frames when available. Match frames to tiles by view and frame.
+    Group by the resolved shot and report any missing context separately.
+    The current player and unsaved directions are left alone.
+    """
+    identity = guard(project_id, expected_revision, expected_video_sha256)
+    row = descriptor(instance_id)
+    route = "/api/mcp/command"
+    review = request(row, route, {"command": "list_direction_context", **identity})
+    frames_by_view: dict[str, set[int]] = {}
+    for direction in review["directions"]:
+        if direction["status"] == "located":
+            frames_by_view.setdefault(direction["resolved"]["view"], set()).update(
+                frame["frame"] for frame in direction["frames"])
+    images = []
+    sheets = []
+    for view, requested in frames_by_view.items():
+        frames = sorted(requested)
+        for index in range(0, len(frames), 8):
+            batch = frames[index:index + 8]
+            sheet = request(row, route, {"command": "capture_direction_frames", "view": view, "frames": batch, **identity})
+            if (sheet["view"] != view or sheet["video_sha256"] != review["views"][view]["sha256"]
+                    or [tile["frame"] for tile in sheet["tiles"]] != batch):
+                raise ValueError("The returned frame sheet does not match the requested media and frames")
+            jpeg = sheet.pop("jpeg_base64", None)
+            sheet["image_index"] = None
+            if jpeg is not None:
+                raw = base64.b64decode(jpeg, validate=True)
+                if not raw.startswith(b"\xff\xd8\xff"):
+                    raise ValueError("Canvas did not return a JPEG frame sheet")
+                images.append(Image(data=raw, format="jpeg").to_image_content())
+                sheet["image_index"] = len(images)
+            sheets.append(sheet)
+    return [TextContent(type="text", text=json.dumps({**review, "sheets": sheets}, ensure_ascii=False)), *images]
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { loadProject, readTimeline, readReview, shotPattern, read, hash, inside, existing } = require('./project');
+const { loadProject, reviewVideoPaths, readTimeline, readReview, shotPattern, read, hash, inside, existing } = require('./project');
 
 let config;
 
@@ -14,8 +14,8 @@ function configure(settings) {
 const idPattern = /^[a-f0-9]{32}$/;
 const terminal = new Set(['completed', 'failed', 'attention']);
 const crafts = {
-  direction: '导演／分镜', blender: 'Blender MCP', image: 'Codex imagegen',
-  music: 'Suno 官方 MCP', video: 'Runway 审核队列', edit: 'Kdenlive / REAPER'
+  direction: 'Direction / storyboard', blender: 'Blender MCP', image: 'Codex imagegen',
+  music: 'Suno official MCP', video: 'Runway review queue', edit: 'Kdenlive / REAPER'
 };
 const mediaTypes = {
   '.mp4': 'video/mp4', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.png': 'image/png',
@@ -42,17 +42,17 @@ function writeNew(file, data) {
 }
 
 function project(id) {
-  if (!Object.hasOwn(config.projects, id)) throw problem(404, '没有这个画布项目');
+  if (!Object.hasOwn(config.projects, id)) throw problem(404, 'Canvas project not found');
   const binding = config.projects[id];
   return { id, demo: Boolean(binding.demo), ...loadProject(binding) };
 }
 
 function folder(p, kind, id = '') {
-  if (id && !idPattern.test(id)) throw problem(404, '找不到记录');
+  if (id && !idPattern.test(id)) throw problem(404, 'Record not found');
   const parent = path.join(p.store, kind);
   const target = path.join(parent, id);
   for (const item of [parent, target]) {
-    if (fs.existsSync(item) && !inside(p.store, fs.realpathSync(item))) throw problem(403, '记录超出项目');
+    if (fs.existsSync(item) && !inside(p.store, fs.realpathSync(item))) throw problem(403, 'Record is outside the project');
   }
   return target;
 }
@@ -75,15 +75,15 @@ function job(p, id) {
       const preview = existing(dir, 'preview.mp4');
       const draft = existing(dir, 'draft.kdenlive-cli.json');
       if (path.resolve(receipt.output) !== preview || revision(draft) !== receipt.source_revision || revision(preview) !== receipt.sha256) {
-        throw problem(409, '渲染文件和回执不一致');
+        throw problem(409, 'Render file does not match its receipt');
       }
       state = { ...state, status: 'completed', stage: 'review', revision: receipt.source_revision, preview_sha256: receipt.sha256 };
     } else if (receipt.state === 'failed') {
-      state = { ...state, status: 'failed', error: receipt.error || '渲染失败，请检查工程回执。' };
+      state = { ...state, status: 'failed', error: receipt.error || 'Rendering failed. Check the job receipt.' };
     }
   }
   if (!terminal.has(state.status) && Date.now() - Date.parse(state.updated_at || request.created) > 480_000) {
-    state = { ...state, status: 'attention', error: '状态已久未更新，请核对现有回执。' };
+    state = { ...state, status: 'attention', error: 'Job status is stale. Check the existing receipt.' };
   }
   return { id, ...request, ...state };
 }
@@ -100,16 +100,16 @@ function timeline(p, draft) {
   let source;
   if (draft) {
     const run = job(p, draft);
-    if (run.kind !== 'edit' || run.status !== 'completed') throw problem(409, '此草稿尚未出片');
+    if (run.kind !== 'edit' || run.status !== 'completed') throw problem(409, 'This draft has no completed render');
     source = existing(folder(p, 'runs', draft), 'draft.kdenlive-cli.json');
-    if (revision(source) !== run.revision) throw problem(409, '草稿已被外部修改，请核对版本');
+    if (revision(source) !== run.revision) throw problem(409, 'The draft changed externally. Check its version');
   } else if (p.review) {
     source = existing(p.dir, p.review.timeline);
   } else if (p.battle) {
     source = existing(p.dir, p.battle.working_project);
   } else {
     const native = p.manifest.active_s03_storyboard?.editable_project?.path;
-    if (typeof native !== 'string' || !native.endsWith('.kdenlive')) throw problem(409, '清单未绑定可编辑的 S03 版本');
+    if (typeof native !== 'string' || !native.endsWith('.kdenlive')) throw problem(409, 'The manifest has no editable S03 version');
     source = existing(p.dir, native.replace(/\.kdenlive$/, '.kdenlive-cli.json'));
   }
   return readTimeline(source);
@@ -128,16 +128,16 @@ function summary(p, draft) {
   const s03 = p.manifest.active_s03_storyboard;
   const ready = name => Boolean(config.python && config[name]?.command &&
     fs.existsSync(config.python) && fs.existsSync(config[name].command));
-  const assets = p.review ? (p.review.mix ? [{ title: '混音', type: 'audio', url: base + 'sound' }] : []) : p.battle ? [
-    { title: '战斗段 · 23 秒', type: 'video', url: base + 'battle-focus' },
-    { title: '战斗版完整混音', type: 'audio', url: base + 'sound' }
+  const assets = p.review ? (p.review.mix ? [{ title: 'Mix', type: 'audio', url: base + 'sound' }] : []) : p.battle ? [
+    { title: 'Action sequence - 23 s', type: 'video', url: base + 'battle-focus' },
+    { title: 'Action-sequence full mix', type: 'audio', url: base + 'sound' }
   ] : p.demo ? [
-    { key: 'cartoon', title: '示例画面素材', type: 'video', url: base + 'cartoon' },
-    { key: 'sound', title: '示例声音素材', type: 'audio', url: base + 'sound' }
+    { key: 'cartoon', title: 'Sample picture source', type: 'video', url: base + 'cartoon' },
+    { key: 'sound', title: 'Sample audio source', type: 'audio', url: base + 'sound' }
   ] : [
-    { key: 'reference-compare', title: '走廊三机位', type: 'video', url: base + 'reference-compare' },
-    { key: 'cartoon', title: '卡通与原声', type: 'video', url: base + 'cartoon' },
-    { key: 'sound', title: 'S03 混音底稿', type: 'audio', url: base + 'sound' }
+    { key: 'reference-compare', title: 'Three-angle corridor reference', type: 'video', url: base + 'reference-compare' },
+    { key: 'cartoon', title: 'Animation and original audio', type: 'video', url: base + 'cartoon' },
+    { key: 'sound', title: 'S03 source mix', type: 'audio', url: base + 'sound' }
   ];
   const film = p.review?.video || p.battle?.current_candidate || s03.preview;
   const short = p.battle?.short_review;
@@ -145,25 +145,26 @@ function summary(p, draft) {
   let focus = Array.isArray(interval) && interval.length === 2 &&
     interval.every(Number.isFinite) && interval[0] >= 0 && interval[1] > interval[0] &&
     Math.round((interval[1] - interval[0]) * t.fps) === short.frames
-    ? { ...videoInfo(short), start: Math.round(interval[0] * t.fps),
+    ? { ...videoInfo(short, p.dir), start: Math.round(interval[0] * t.fps),
         end: Math.round(interval[1] * t.fps), url: base + 'battle-focus' } : null;
   if (p.review?.focus && !draft) {
     const record = p.review.focus;
-    if (record.end > t.frames) throw problem(422, '重点片段超出时间线');
+    if (record.end > t.frames) throw problem(422, 'Focus range is outside the timeline');
     focus = { ...videoInfo(record, p.dir), start: record.start, end: record.end, frames: record.end - record.start,
       width: record.width || t.width, height: record.height || t.height, label: record.label, url: base + 'battle-focus' };
   }
   let graph = p.battle?.canvas;
   if (p.review?.comfy) {
     const saved = read(existing(p.dir, p.review.comfy.path));
-    if (saved.id !== p.review.comfy.canvas_id || !Array.isArray(saved.nodes)) throw problem(422, '项目画布身份无效');
+    if (saved.id !== p.review.comfy.canvas_id || !Array.isArray(saved.nodes)) throw problem(422, 'Invalid project workspace identity');
     graph = { ...p.review.comfy, revision: saved.revision, nodes: saved.nodes.length };
   }
   const annotations = draft ? { data: null } : readReview(p, t);
   if (p.battle) {
     for (const track of t.tracks) for (const clip of track.clips) {
       const shot = clip.name.match(/^([0-9]+[a-z-]*)[｜|]/)?.[1];
-      const still = shot && Object.hasOwn(p.battle.first_frames || {}, shot) && clip.name.includes('首帧占位');
+      const still = shot && Object.hasOwn(p.battle.first_frames || {}, shot) &&
+        (clip.name.includes('First-frame placeholder') || clip.name.includes('\u9996\u5e27\u5360\u4f4d'));
       clip.shot = shot || null;
       clip.placeholder = Boolean(still);
       if (still) clip.thumbnail = base + 'still-' + shot;
@@ -192,8 +193,8 @@ function summary(p, draft) {
       t.tracks.filter(track => track.type === 'audio' && track.clips.length).length === 1 ? base + 'sound' : null,
     graph: graph ? { name: path.basename(graph.path, '.json'), revision: graph.revision, nodes: graph.nodes } : null,
     wholeFilm: Boolean(p.battle || p.review),
-    generic: Boolean(p.review), viewLabels: { s03: p.review?.video.label || (p.battle ? '全片候选' : p.demo ? '示例剪辑' : 'S03 · 当前候选'),
-      battle: focus?.label || '战斗重点版', opening: 'S01–S02 · 开场' },
+    generic: Boolean(p.review), viewLabels: { s03: p.review?.video.label || (p.battle ? 'Full-film candidate' : p.demo ? 'Sample edit' : 'S03 - current candidate'),
+      battle: focus?.label || 'Action focus', opening: 'S01-S02 - opening' },
     hasStoryboard: !p.review || Boolean(p.review.notes),
     comfyCanvas: Boolean(graph?.canvas_id),
     assets, demo: p.demo,
@@ -216,10 +217,10 @@ function reviewDecisions(p, revision) {
 
 function reviewDecision(p, draft, body) {
   const t = timeline(p, draft);
-  if ((!p.battle && !p.review) || t.revision !== body.revision) throw problem(409, '剪辑版本已变化');
+  if ((!p.battle && !p.review) || t.revision !== body.revision) throw problem(409, 'Edit revision has changed');
   const track = t.tracks.find(row => row.id === body.track);
   if (!Number.isSafeInteger(body.clip) || !track?.clips[body.clip] || !['pass', 'redo'].includes(body.state)) {
-    throw problem(422, '镜头审阅状态无效');
+    throw problem(422, 'Invalid shot review status');
   }
   const row = { revision: t.revision, track: body.track, clip: body.clip, state: body.state,
     created: new Date().toISOString() };
@@ -231,12 +232,12 @@ function reviewDecision(p, draft, body) {
 
 function bodyText(data, key, max) {
   const value = typeof data[key] === 'string' ? data[key].trim() : '';
-  if (!value || value.length > max) throw problem(422, '字段长度无效：' + key);
+  if (!value || value.length > max) throw problem(422, 'Invalid field length: ' + key);
   return value;
 }
 
 function createTask(p, body) {
-  if (!Object.hasOwn(crafts, body.route) || !idPattern.test(body.id || '')) throw problem(422, '任务类型或编号无效');
+  if (!Object.hasOwn(crafts, body.route) || !idPattern.test(body.id || '')) throw problem(422, 'Invalid task type or ID');
   const dir = folder(p, 'tasks', body.id);
   const anchor = body.anchor;
   if (anchor !== undefined && (!anchor || !['s03', 'opening', 'battle'].includes(anchor.view) ||
@@ -256,7 +257,7 @@ function createTask(p, body) {
           !Number.isSafeInteger(anchor.clip.offset) || anchor.clip.start < 0 ||
           anchor.clip.sourceFrame !== anchor.clip.start + anchor.clip.offset ||
           anchor.clip.sourceFrame >= anchor.clip.end)))))) {
-    throw problem(422, '指令时间锚点无效');
+    throw problem(422, 'Invalid annotation time anchor');
   }
   const message = { id: body.id, title: bodyText(body, 'title', 100), target: bodyText(body, 'target', 120),
     text: bodyText(body, 'text', 16000), route: body.route, ...(anchor ? { anchor } : {}) };
@@ -264,7 +265,7 @@ function createTask(p, body) {
   const file = path.join(dir, 'brief.json');
   if (fs.existsSync(file)) {
     const current = task(p, body.id);
-    if (Object.keys(message).some(key => JSON.stringify(current[key]) !== JSON.stringify(message[key]))) throw problem(409, '任务编号已用于其他指令');
+    if (Object.keys(message).some(key => JSON.stringify(current[key]) !== JSON.stringify(message[key]))) throw problem(409, 'Task ID is already assigned to another annotation');
     return current;
   }
   writeNew(file, { ...message, created: new Date().toISOString(), status: 'prepared_for_codex' });
@@ -272,11 +273,11 @@ function createTask(p, body) {
 }
 
 function receiveTask(p, id, body) {
-  if (task(p, id).result) throw problem(409, '该任务已有结果，另开一条记录修订');
+  if (task(p, id).result) throw problem(409, 'This task has a result. Create another record for revisions');
   const file = existing(p.dir, bodyText(body, 'path', 500));
-  if (!mediaTypes[path.extname(file).toLowerCase()]) throw problem(422, '只接收项目内可审阅的媒体或文档');
+  if (!mediaTypes[path.extname(file).toLowerCase()]) throw problem(422, 'Expected reviewable media or a document inside the project');
   const sha256 = revision(file);
-  if (sha256 !== body.sha256) throw problem(409, '结果文件和哈希不一致');
+  if (sha256 !== body.sha256) throw problem(409, 'Result file does not match its hash');
   writeNew(path.join(folder(p, 'tasks', id), 'result.json'), {
     path: path.relative(p.dir, file), sha256, note: bodyText(body, 'note', 1200),
     received: new Date().toISOString(), status: 'candidate'
@@ -285,38 +286,38 @@ function receiveTask(p, id, body) {
 }
 
 function requireInt(value, min, max) {
-  if (!Number.isSafeInteger(value) || value < min || value > max) throw problem(422, '帧号超出允许范围');
+  if (!Number.isSafeInteger(value) || value < min || value > max) throw problem(422, 'Frame is out of range');
   return value;
 }
 
 function prepareEdit(p, body) {
-  if (p.battle) throw problem(403, '《破阵子》当前以审片模式打开');
-  if (!config.kdenlive?.command) throw problem(503, '请先在桌面菜单配置 Kdenlive MCP');
+  if (p.battle) throw problem(403, 'This project is open in review mode');
+  if (!config.kdenlive?.command) throw problem(503, 'Configure Kdenlive MCP in the desktop menu first');
   const draft = body.draft || null;
   const t = timeline(p, draft);
-  if (t.native) throw problem(403, '原生 Kdenlive 工程支持审片，请在 Kdenlive 中修改工程并重新导出审片视频');
-  if (t.revision !== body.revision) throw problem(409, '底稿版本已变化，请刷新画布');
+  if (t.native) throw problem(403, 'Native Kdenlive projects support review. Edit the project in Kdenlive and export a new review video');
+  if (t.revision !== body.revision) throw problem(409, 'The source revision changed. Reload the canvas');
   const track = t.tracks.find(row => row.id === body.track);
   const clip = track?.clips[body.clip];
-  if (!Number.isInteger(body.clip) || !clip) throw problem(422, '所选片段不存在');
+  if (!Number.isInteger(body.clip) || !clip) throw problem(422, 'The selected clip does not exist');
   const args = { track_id: track.id, clip_index: clip.index };
   const candidate = { ...clip };
   let edit;
   if (body.operation === 'trim') {
     candidate.start = requireInt(body.start, 0, clip.max - 1);
     candidate.end = requireInt(body.end, candidate.start + 1, clip.max);
-    if (candidate.start === clip.start && candidate.end === clip.end) throw problem(422, '入点和出点未变化');
+    if (candidate.start === clip.start && candidate.end === clip.end) throw problem(422, 'In/out points have not changed');
     edit = ['trim_clip', { ...args, source_in_seconds: candidate.start / t.fps, source_out_seconds: candidate.end / t.fps }];
   } else if (body.operation === 'move') {
     candidate.position = requireInt(body.position, 0, t.frames + Math.round(5 * t.fps));
-    if (candidate.position === clip.position) throw problem(422, '时间线位置未变化');
+    if (candidate.position === clip.position) throw problem(422, 'Timeline position has not changed');
     edit = ['move_clip', { ...args, position_seconds: candidate.position / t.fps }];
   } else {
-    throw problem(422, '未知剪辑操作');
+    throw problem(422, 'Unknown edit operation');
   }
   const end = c => c.position + c.end - c.start;
   if (track.clips.some(c => c.index !== clip.index && c.position < end(candidate) && candidate.position < end(c))) {
-    throw problem(422, '改动会覆盖同轨片段，请调整帧号');
+    throw problem(422, 'This edit overlaps a clip on the same track. Adjust the frame');
   }
   return { kind: 'edit', title: clip.name, draft, source: t.source, revision: t.revision,
     edits: [edit], operation: body.operation, track: track.id, clip: clip.index,
@@ -329,15 +330,15 @@ function referenceRecord(p) {
 }
 
 function prepareReferences(p) {
-  if (!config.comfy?.command || p.demo) throw problem(503, '此项目未接入可运行的参考图工作流');
+  if (!config.comfy?.command || p.demo) throw problem(503, 'No runnable reference-image workflow is connected to this project');
   const record = referenceRecord(p);
   const source = existing(p.dir, record.comfy_mcp.workflow.path);
   const scene = existing(p.dir, record.candidate_scene.path);
   const sha256 = revision(source);
   if (sha256 !== record.comfy_mcp.workflow.sha256 || revision(scene) !== record.candidate_scene.sha256) {
-    throw problem(409, '三机位工作流或场景已变化，请先核对版本');
+    throw problem(409, 'The three-angle workflow or scene changed. Check its version');
   }
-  return { kind: 'references', title: '走廊三机位参考图', source, scene, revision: sha256 };
+  return { kind: 'references', title: 'Three-angle corridor references', source, scene, revision: sha256 };
 }
 
 function start(p, request) {
@@ -346,9 +347,9 @@ function start(p, request) {
   const receipt = path.join(dir, 'request.json');
   if (fs.existsSync(receipt)) return job(p, id);
   if (ids(p, 'runs', 'request.json').some(other => !terminal.has(job(p, other).status))) {
-    throw problem(409, '已有本地任务运行，请先等待结果');
+    throw problem(409, 'A local job is running. Wait for its result');
   }
-  if (!config.python || !fs.existsSync(config.python)) throw problem(503, '本地 MCP 客户端运行环境缺失');
+  if (!config.python || !fs.existsSync(config.python)) throw problem(503, 'The local MCP client runtime is missing');
   fs.mkdirSync(dir, { recursive: true });
   writeNew(receipt, { ...request, created: new Date().toISOString() });
   const log = fs.openSync(path.join(dir, 'worker.log'), 'ax');
@@ -367,53 +368,56 @@ function start(p, request) {
 function media(p, key, draft, runId) {
   if (key.startsWith('task-')) {
     const result = task(p, key.slice(5)).result;
-    if (!result) throw problem(404, '任务结果还未回填');
+    if (!result) throw problem(404, 'The task result has not been attached');
     const file = existing(p.dir, result.path);
-    if (revision(file) !== result.sha256) throw problem(409, '结果已变化，请核对版本');
+    if (revision(file) !== result.sha256) throw problem(409, 'Result changed. Check its version');
     return file;
   }
   if (/^still-[0-9]+[a-z]*$/.test(key)) {
     const frames = p.battle?.first_frames;
     const shot = key.slice(6);
-    if (!frames || !Object.hasOwn(frames, shot)) throw problem(404, '未登记的首帧');
+    if (!frames || !Object.hasOwn(frames, shot)) throw problem(404, 'First frame is not registered');
     const record = frames[shot];
     const file = existing(p.dir, record.path);
-    if (revision(file) !== record.sha256) throw problem(409, '首帧与清单不一致');
+    if (revision(file) !== record.sha256) throw problem(409, 'First frame does not match the manifest');
     return file;
   }
   if (key.startsWith('bin-')) {
     const item = timeline(p, draft).bin.get(key.slice(4));
-    if (!item) throw problem(404, '素材不存在');
+    if (!item) throw problem(404, 'Source does not exist');
     return existing(p.dir, item.source);
   }
   const thumbnail = /^thumb-(\d+)-(\d+)$/.exec(key);
   if (thumbnail) {
     const t = timeline(p, draft);
     const row = readReview(p, t).data?.clips.find(row => row.track === Number(thumbnail[1]) && row.clip === Number(thumbnail[2]));
-    if (!row?.thumbnail) throw problem(404, '缩略图未登记');
+    if (!row?.thumbnail) throw problem(404, 'Thumbnail is not registered');
     const file = existing(p.dir, row.thumbnail.path);
-    if (revision(file) !== row.thumbnail.sha256) throw problem(409, '缩略图和记录不一致');
+    if (revision(file) !== row.thumbnail.sha256) throw problem(409, 'Thumbnail does not match its record');
     return file;
   }
   if (key === 'preview' || key === 'editable') {
     const item = draft && job(p, draft);
-    if (!item || item.status !== 'completed' || item.kind !== 'edit') throw problem(404, '草稿还未完成');
+    if (!item || item.status !== 'completed' || item.kind !== 'edit') throw problem(404, 'Draft is not complete');
     return existing(folder(p, 'runs', draft), key === 'preview' ? 'preview.mp4' : 'draft.kdenlive');
   }
   if (/^reference-[abc]$/.test(key) && runId) {
     const item = job(p, runId);
-    if (item.kind !== 'references' || item.status !== 'completed') throw problem(404, '参考图还未完成');
+    if (item.kind !== 'references' || item.status !== 'completed') throw problem(404, 'Reference images are not complete');
     return existing(folder(p, 'runs', runId), key + '.png');
   }
   const s03 = p.manifest.active_s03_storyboard;
   const opening = p.manifest.active_s01_s02_revision;
+  if (['s03', 'opening', 'battle-focus'].includes(key)) {
+    return existing(p.dir, reviewVideoPaths(p)[key === 'battle-focus' ? 'battle' : key]);
+  }
   const fixed = p.review ? {
-    s03: p.review.video.path, 'battle-focus': p.review.focus?.path, sound: p.review.mix, storyboard: p.review.notes
+    sound: p.review.mix, storyboard: p.review.notes
   } : p.battle ? {
-    s03: p.battle.current_candidate.path, 'battle-focus': p.battle.short_review.path, sound: p.battle.lossless_mix,
+    sound: p.battle.lossless_mix,
     storyboard: p.manifest.latest_compact_handoff?.readme || 'README.md'
   } : {
-    opening: opening.video.path, s03: s03.preview.path, storyboard: s03.reader,
+    storyboard: s03.reader,
     cartoon: opening.cartoon_original_audio_4k.path, sound: s03.audio_revision.master.path,
     'reference-compare': p.manifest.corridor_three_camera_previs ? referenceRecord(p).media['three-camera'].path : null
   };
@@ -422,7 +426,7 @@ function media(p, key, draft, runId) {
 
 function stream(req, res, file) {
   const type = mediaTypes[path.extname(file).toLowerCase()];
-  if (!type) throw problem(403, '文件类型不可预览');
+  if (!type) throw problem(403, 'File type cannot be previewed');
   const length = fs.statSync(file).size;
   const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store' };
@@ -460,15 +464,15 @@ async function handle(req, res, url, json, readBody) {
   const draft = url.searchParams.get('draft');
   const method = req.method;
   if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '') || !['127.0.0.1', 'localhost'].includes(url.hostname)) {
-    throw problem(403, '仅允许本机访问画布');
+    throw problem(403, 'Canvas accepts local access only');
   }
   if (method === 'POST') {
-    if (req.headers.origin && req.headers.origin !== url.origin) throw problem(403, '仅接受本机画布发起的写操作');
+    if (req.headers.origin && req.headers.origin !== url.origin) throw problem(403, 'Writes must originate from the local canvas');
     if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
-      throw problem(415, '请使用 JSON 请求');
+      throw problem(415, 'Use a JSON request');
     }
   }
-  if (noun !== 'projects') throw problem(404, '画布路由不存在');
+  if (noun !== 'projects') throw problem(404, 'Canvas route does not exist');
   if (!id && method === 'GET') return json(res, 200, Object.entries(config.projects).map(([id, p]) => ({ id, title: p.title })));
   const p = project(id);
   if (!action && method === 'GET') return json(res, 200, summary(p, draft));
@@ -484,13 +488,13 @@ async function handle(req, res, url, json, readBody) {
   }
   if (action === 'edits' && !key && method === 'POST') return json(res, 202, start(p, prepareEdit(p, await readBody(req))));
   if (action === 'references' && !key && method === 'POST') return json(res, 202, start(p, prepareReferences(p)));
-  throw problem(404, '画布路由不存在');
+  throw problem(404, 'Canvas route does not exist');
 }
 
 function comfyWorkflow(id) {
   const p = project(id);
   const record = p.review?.comfy || p.battle?.canvas;
-  if (!record?.canvas_id || typeof record.path !== 'string') throw problem(404, '项目没有绑定 ComfyUI 画布');
+  if (!record?.canvas_id || typeof record.path !== 'string') throw problem(404, 'No ComfyUI workspace is bound to this project');
   return { filename: path.basename(record.path), id: record.canvas_id };
 }
 

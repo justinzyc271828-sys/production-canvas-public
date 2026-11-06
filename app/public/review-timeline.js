@@ -1,7 +1,8 @@
 
 'use strict';
 let range, heightMode, rulerMode, navLane, rulerLane, drag, peaks, peakUrl;
-const colors = { 现实: '#747a7d', 梦: '#71858c', 记忆: '#af7f58', 幻想: '#8a7792' };
+const colors = { Reality: '#747a7d', Dream: '#71858c', Memory: '#af7f58', Fantasy: '#8a7792',
+  '\u73b0\u5b9e': '#747a7d', '\u68a6': '#71858c', '\u8bb0\u5fc6': '#af7f58', '\u5e7b\u60f3': '#8a7792' };
 const clipEnd = clip => clip.position + clip.end - clip.start;
 const selectedTrack = () => model?.tracks.find(track => track.id === selected?.track);
 const selectedClip = () => selectedTrack()?.clips[selected.clip];
@@ -62,7 +63,7 @@ function seekVideoFrame(video, frame, pause = false, exact = false) {
   const target = Math.min(Math.max(0, frame), Math.max(0, frames - 1));
   if (exact && target !== frame) {
     video.pause();
-    tell('当前预览不含指令对应的帧。', true);
+    tell('The current preview does not include the annotated frame.', true);
     return Promise.resolve(false);
   }
   const clock = videoClock;
@@ -76,7 +77,7 @@ function seekVideoFrame(video, frame, pause = false, exact = false) {
   const pending = clock.pending = new Promise(resolve => { clock.settle = resolve; });
   clock.timer = setTimeout(() => {
     settleFrameSeek(clock, false);
-    if (video === player) tell('未能确认目标帧，请重试跳转。', true);
+    if (video === player) tell('The target frame could not be confirmed. Try again.', true);
   }, 3000);
   video.currentTime = time;
   finishFrameSeek(video);
@@ -107,33 +108,37 @@ function resolveNote({ anchor }) {
 function reviewNotes(opening = currentView === 'opening') {
   return model.tasks.flatMap(task => {
     const location = resolveNote(task);
-    return location && (location.view === 'opening') === opening ? [{ ...location, task }] : [];
-  }).sort((a, b) => a.frame - b.frame);
+    return location ? [{ ...location, task }] : [];
+  }).sort((a, b) => Number(b.view === 'opening') - Number(a.view === 'opening') || a.frame - b.frame)
+    .map((note, index) => ({ ...note, number: index + 1 }))
+    .filter(note => (note.view === 'opening') === opening);
 }
 
 function anchorDetails(anchor) {
-  const label = model.viewLabels?.[anchor.view] || (anchor.view === 'opening' ? '开场' : '剪辑候选');
-  return [label, anchor.version, timecode(anchor.frame), '第 ' + anchor.frame + ' 帧', anchor.shot && '镜头 ' + anchor.shot]
+  const label = model.viewLabels?.[anchor.view] || (anchor.view === 'opening' ? 'Opening' : 'Edit candidate');
+  return [label, anchor.version, timecode(anchor.frame), 'Frame ' + anchor.frame, anchor.shot && 'Shot ' + anchor.shot]
     .filter(Boolean).join(' · ');
 }
 
 function noteStatus(task, location) {
-  if (!location) return '无法定位';
-  const label = location.review === 'replacement' ? '镜头已换素材 · 待复看' :
-    location.review === 'trim' ? '镜头已裁剪 · 待复看' : '';
-  const moved = location.frame !== task.anchor.frame ? '原在 ' + timecode(task.anchor.frame) : '';
+  if (!location) return 'Unlocated';
+  const label = location.review === 'replacement' ? 'Shot source replaced - review needed' :
+    location.review === 'trim' ? 'Shot trimmed - review needed' : '';
+  const moved = location.frame !== task.anchor.frame ? 'Originally at ' + timecode(task.anchor.frame) : '';
   return [label, moved].filter(Boolean).join(' · ');
 }
 
 function appendInspectorNotes(target) {
   const anchored = model.tasks.filter(task => task.anchor);
-  target.append(el('h4', '导演指令 · ' + model.tasks.length));
+  target.append(el('h4', 'Frame annotations · ' + model.tasks.length));
   const available = [...reviewNotes(true), ...reviewNotes(false)];
   for (const location of available) {
     const { task } = location;
-    const label = timecode(location.frame) + '　' + task.title;
-    const row = button(label, () => jumpNote(task), location.review ? 'note-entry old-note' : 'note-entry');
-    row.setAttribute('aria-label', '跳到这一帧 · ' + label);
+    const label = timecode(location.frame) + ' ' + task.title;
+    const row = button('', () => jumpNote(task), location.review ? 'note-entry old-note' : 'note-entry');
+    row.append(el('span', String(location.number), { class: 'note-number', 'aria-hidden': 'true' }),
+      el('span', label, { class: 'note-entry-label' }));
+    row.setAttribute('aria-label', 'Go to annotation ' + location.number + ' · ' + label);
     row.dataset.note = task.id;
     row.dataset.frame = location.frame;
     row.dataset.view = location.view;
@@ -144,10 +149,10 @@ function appendInspectorNotes(target) {
   }
   const missing = anchored.filter(task => !resolveNote(task));
   if (missing.length) {
-    target.append(el('h4', '无法定位'));
+    target.append(el('h4', 'Unlocated'));
     for (const task of missing) target.append(el('p', task.title + ' · ' + anchorDetails(task.anchor), { class: 'hint' }));
   }
-  if (model.tasks.length > anchored.length) target.append(el('p', '无时间锚点的记录见「导演指令」。', { class: 'hint' }));
+  if (model.tasks.length > anchored.length) target.append(el('p', 'Unanchored records appear under Frame annotations.', { class: 'hint' }));
   highlightInspectorNote();
 }
 
@@ -165,7 +170,7 @@ function updateVersion() {
   $('review-version').title = versionName();
   $('film-summary').textContent = currentView === 'opening' ? sec(model.opening.seconds) :
     [sec(frames / model.fps), info?.height && info.height + 'p', Number(model.fps.toFixed(2)) + ' fps',
-      model.wholeFilm ? pictureClips().filter(clip => clip.placeholder).length + ' 段占位' : model.tracks.length + ' 条轨道'].filter(Boolean).join(' · ');
+      model.wholeFilm ? countLabel(pictureClips().filter(clip => clip.placeholder).length, 'placeholder') : countLabel(model.tracks.length, 'track')].filter(Boolean).join(' · ');
   renderInspector();
 }
 function seekFrame(frame) {
@@ -188,16 +193,16 @@ function renderTransport() {
   const playing = playable && !player.paused && !player.ended;
   $('play-toggle').disabled = !playable;
   $('play-toggle').textContent = playing ? 'Ⅱ' : '▶';
-  $('play-toggle').setAttribute('aria-label', playing ? '暂停' : '播放');
+  $('play-toggle').setAttribute('aria-label', playing ? 'Pause' : 'Play');
   $('play-time').textContent = timecode(playFrame());
-  $('frame-number').textContent = player instanceof HTMLVideoElement ? '帧 ' + playFrame() : '';
+  $('frame-number').textContent = player instanceof HTMLVideoElement ? 'Frame ' + playFrame() : '';
   $('note-at-time').disabled = currentView === 'asset' || !(player instanceof HTMLVideoElement) || videoClock?.displayed == null;
   $('total-time').textContent = ' / ' + timecode(isTimelineView() ? model.frames : (player?.duration || 0) * model.fps || 0);
   $('loop-shot').setAttribute('aria-pressed', Boolean(loop));
   $('loop-shot').disabled = !selectedClip() || !isTimelineView();
   const active = isTimelineView() && pictureClips().find(clip => clip.placeholder &&
     playFrame() >= clip.position && playFrame() < clipEnd(clip));
-  $('player').dataset.still = active ? active.shot + (model.generic ? ' · 占位镜头' : ' · 静态首帧占位') : '';
+  $('player').dataset.still = active ? active.shot + (model.generic ? ' - placeholder shot' : ' - static first-frame placeholder') : '';
   const frame = playFrame();
   highlightInspectorNote(frame);
   refreshQuickNote();
@@ -216,6 +221,11 @@ function highlightInspectorNote(frame = playFrame()) {
   for (const row of rows) {
     if (row === nearest) row.setAttribute('aria-current', 'true');
     else row.removeAttribute('aria-current');
+  }
+  for (const marker of $('edit').querySelectorAll('.note-mark, .note-cluster .cluster-button, .overview-note')) {
+    const ids = (marker.dataset.notes || marker.dataset.note || '').split(' ');
+    if (nearest && ids.includes(nearest.dataset.note)) marker.setAttribute('aria-current', 'true');
+    else marker.removeAttribute('aria-current');
   }
 }
 
@@ -296,15 +306,15 @@ function chooseClip(track, clip, zoom) {
   item?.focus({ preventScroll: true });
 }
 function renderOverviewInspector(target) {
-  const heading = $('review-version').selectedOptions[0]?.textContent || '当前候选';
-  target.append(el('p', '本版', { class: 'hint' }), el('h3', heading), el('p', $('film-summary').textContent, { class: 'hint' }));
-  target.append(el('p', model.tracks.map(track => trackCode(track) + ' ' + track.clips.length + ' 段').join(' · '), { class: 'track-summary' }));
+  const heading = $('review-version').selectedOptions[0]?.textContent || 'Current candidate';
+  target.append(el('p', 'Version', { class: 'hint' }), el('h3', heading), el('p', $('film-summary').textContent, { class: 'hint' }));
+  target.append(el('p', model.tracks.map(track => trackCode(track) + ' ' + countLabel(track.clips.length, 'clip')).join(' · '), { class: 'track-summary' }));
   const track = pictureTrack();
   if (model.wholeFilm && track) {
     const pending = track.clips.filter(clip => clip.placeholder && model.decisions[shotDecisionKey(track, clip)] !== 'pass');
-    const strip = el('div', '', { class: 'completion-strip', 'aria-label': '剪辑片段占位分布' });
+    const strip = el('div', '', { class: 'completion-strip', 'aria-label': 'Placeholder distribution' });
     for (const clip of track.clips) strip.append(el('span', '', { class: clip.placeholder ? 'strip-still' : '' }));
-    target.append(el('p', '画面占位分布', { class: 'hint' }), strip, el('h4', '待审 · ' + pending.length));
+    target.append(el('p', 'Picture placeholders', { class: 'hint' }), strip, el('h4', 'Pending - ' + pending.length));
     for (const clip of pending) {
       const row = button('', () => chooseClip(track, clip, 'act'), 'pending-shot');
       row.dataset.shot = clip.shot;
@@ -317,7 +327,7 @@ function renderOverviewInspector(target) {
 function noteContext() {
   const frame = playFrame();
   const version = versionName();
-  const section = model.viewLabels?.[currentView] || (currentView === 'opening' ? '开场' : '全片');
+  const section = model.viewLabels?.[currentView] || (currentView === 'opening' ? 'Opening' : 'Full film');
   const anchor = { view: currentView, frame, version,
     revision: currentView === 'opening' ? model.opening.revision : model.revision };
   if (isTimelineView()) {
@@ -360,6 +370,7 @@ function jumpNote(task) {
   else seekLocalFrame(frame - mediaOffset(), true);
   if (view !== 'opening') reveal(frame);
   else renderReviewRows();
+  $('inspector').querySelector('[data-note="' + task.id + '"]')?.scrollIntoView({ block: 'nearest' });
 }
 
 
@@ -439,9 +450,9 @@ function ratio(event, lane) {
 }
 function renderOverview() {
   if (!navLane) {
-    ({ lane: navLane } = makeRow('全片', 'overview-row', $('overview')));
+    ({ lane: navLane } = makeRow('Full film', 'overview-row', $('overview')));
     navLane.tabIndex = 0;
-    navLane.setAttribute('aria-label', '全片导航，左右键移动视野');
+    navLane.setAttribute('aria-label', 'Full-film navigation. Use arrow keys to move the visible range');
     navLane.onkeydown = event => {
       if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();
@@ -476,14 +487,18 @@ function renderOverview() {
   lane.replaceChildren();
   const full = { start: 0, span: model.frames };
   for (const [index, act] of chapters().entries()) {
-    const tile = pos(el('span', String(index + 1), { class: 'overview-act', title: act.title }), act.start, act.end, full);
+    const tile = pos(el('span', '', { class: 'overview-act', title: (index + 1) + ' · ' + act.title }), act.start, act.end, full);
     tile.style.setProperty('--chapter-color', colors[act.layer]);
     lane.append(tile);
   }
   for (const clip of pictureClips().filter(clip => clip.placeholder)) {
     lane.append(pos(el('span', '', { class: 'overview-still' }), clip.position, clipEnd(clip), full));
   }
-  for (const { frame } of reviewNotes(false)) lane.append(pos(el('span', '', { class: 'overview-note' }), frame, undefined, full));
+  for (const { frame, task } of reviewNotes(false)) {
+    const mark = el('span', '', { class: 'overview-note' });
+    mark.dataset.note = task.id;
+    lane.append(pos(mark, frame, undefined, full));
+  }
   if (currentView === 'battle') lane.append(
     pos(el('span', '', { class: 'version-mask' }), 0, model.focus.start, full),
     pos(el('span', '', { class: 'version-mask' }), model.focus.end, model.frames, full));
@@ -503,7 +518,7 @@ function timeTicks(lane) {
 }
 function barTicks(lane) {
   const music = model.reviewData?.music;
-  if (!music) return missing(lane, '无小节记录');
+  if (!music) return missing(lane, 'No bar markers');
   const beatsPerBar = music.beatsPerBar || 4;
   const spacing = music.bar * model.fps * laneWidth() / range.span;
   const interval = [1, 2, 4, 8, 16].find(step => spacing * step >= 44) || 16;
@@ -516,7 +531,7 @@ function barTicks(lane) {
     lane.append(pos(el('span', number, { class: number ? 'tick major' : 'tick' }), frame));
   }
   if (music.end * model.fps < range.start + range.span) lane.append(pos(
-    el('span', '尾声 · 自由速度', { class: 'tick major' }), Math.max(range.start, music.end * model.fps)));
+    el('span', 'Outro - free time', { class: 'tick major' }), Math.max(range.start, music.end * model.fps)));
 }
 function missing(lane, label) {
   lane.append(el('span', label, { class: 'missing' }));
@@ -524,14 +539,20 @@ function missing(lane, label) {
 function reviewMarks(lane, marks, kind, handler = mark => seekFrame(mark.frame), window = range) {
   let last = -Infinity;
   const px = laneWidth() / window.span;
-  for (const mark of marks) {
-    if (mark.frame < window.start || mark.frame >= window.start + window.span) continue;
+  const visible = marks.filter(mark => mark.frame >= window.start && mark.frame < window.start + window.span)
+    .sort((a, b) => a.frame - b.frame);
+  for (const [index, mark] of visible.entries()) {
     const marker = button(mark.symbol || mark.title, () => handler(mark), 'marker ' + kind);
     marker.title = [mark.title, timecode(mark.frame), mark.status].filter(Boolean).join(' · ');
     if (mark.old) marker.classList.add('old-note');
     marker.setAttribute('aria-label', marker.title);
     if ((mark.frame - last) * px < (kind === 'shot-mark' ? 24 : 16)) marker.classList.add('unlabelled');
     else last = mark.frame;
+    if (kind === 'shot-mark') {
+      const space = ((visible[index + 1]?.frame ?? window.start + window.span) - mark.frame) * px - 4;
+      marker.style.maxWidth = Math.max(4, space) + 'px';
+      if (space < 72) marker.classList.add('unlabelled');
+    }
     if (kind === 'shot-mark' && selectedClip()?.position === mark.frame) marker.classList.add('selected-marker');
     lane.append(pos(marker, mark.frame, undefined, window));
   }
@@ -541,23 +562,21 @@ function renderNoteMarks(lane, notes, window) {
   const visible = notes.filter(({ frame }) => frame >= window.start && frame < window.start + window.span);
   for (let start = 0; start < visible.length;) {
     let end = start + 1;
-    while (end < visible.length && (visible[end].frame - visible[end - 1].frame) * scale < 12) end++;
+    while (end < visible.length && (visible[end].frame - visible[end - 1].frame) * scale < 36) end++;
     const first = visible[start];
-    const next = visible[end]?.frame ?? window.start + window.span;
-    const available = Math.max(12, (next - first.frame) * scale - 2);
     if (end === start + 1) {
       const { task } = first;
       const text = [task.title, timecode(first.frame), noteStatus(task, first)].filter(Boolean).join(' · ');
-      const mark = button(available >= 30 ? '● ' + task.title : '●', () => jumpNote(task),
+      const mark = button(String(first.number), () => jumpNote(task),
         'marker note-mark' + (first.review ? ' old-note' : ''));
-      mark.title = text;
+      mark.title = 'Annotation ' + first.number + ' · ' + timecode(first.frame) + ' - click to locate';
       mark.dataset.note = task.id;
-      mark.setAttribute('aria-label', text);
-      mark.style.maxWidth = available + 'px';
+      mark.dataset.number = first.number;
+      mark.setAttribute('aria-label', 'Annotation ' + first.number + ' · ' + text);
       lane.append(pos(mark, first.frame, undefined, window));
     } else {
       const group = pos(el('div', '', { class: 'cluster note-cluster' }), first.frame, undefined, window);
-      const badge = button((end - start) + ' 条', () => {
+      const badge = button((end - start) + ' notes', () => {
         const extent = Math.max(1, visible[end - 1].frame - first.frame + 1);
         const span = extent * 1.6;
         const offset = first.frame - extent * .3;
@@ -566,10 +585,11 @@ function renderNoteMarks(lane, notes, window) {
           renderReviewRows();
         } else setRange(offset, span, 'custom', 1);
       }, 'cluster-button');
-      badge.title = '放大这组指令';
+      badge.dataset.notes = visible.slice(start, end).map(note => note.task.id).join(' ');
+      badge.title = 'Zoom to these annotations';
       const menu = el('div', '', { class: 'cluster-menu' });
       for (const note of visible.slice(start, end)) {
-        const label = timecode(note.frame) + ' · ' + note.task.title;
+        const label = 'Annotation ' + note.number + ' · ' + timecode(note.frame) + ' · ' + note.task.title;
         const item = button(label, () => jumpNote(note.task), note.review ? 'old-note' : undefined);
         item.title = [label, noteStatus(note.task, note)].filter(Boolean).join(' · ');
         item.dataset.note = note.task.id;
@@ -598,37 +618,44 @@ function renderReviewRows() {
   const root = $('review-rows');
   root.replaceChildren();
   if (heightMode === 'collapsed') return;
-  rulerLane = makeRow(rulerMode === 'time' ? '时间' : '小节', 'ruler', root).lane;
-  rulerLane.setAttribute('aria-label', '刻度，点击定位');
+  rulerLane = makeRow(rulerMode === 'time' ? 'Time' : 'Bars', 'ruler', root).lane;
+  rulerLane.setAttribute('aria-label', 'Ruler - click to locate');
   rulerLane.onclick = event => { loop = null; seekFrame(Math.round(range.start + range.span * ratio(event, rulerLane))); };
   (rulerMode === 'time' ? timeTicks : barTicks)(rulerLane);
-  if (heightMode === 'expanded' && rulerMode === 'time' && model.reviewData) barTicks(makeRow('小节', 'review-row bars-row', root).lane);
-  const acts = makeRow('章节', 'review-row chapter-row', root).lane;
+  if (heightMode === 'expanded' && rulerMode === 'time' && model.reviewData) barTicks(makeRow('Bars', 'review-row bars-row', root).lane);
+  const acts = makeRow('Chapters', 'review-row chapter-row', root).lane;
   for (const [index, act] of chapters().entries()) {
     if (!intersects(act.start, act.end)) continue;
-    const mark = button((index + 1) + '　' + act.title, () => seekFrame(act.start), 'chapter');
+    const width = (Math.min(act.end, range.start + range.span) - Math.max(act.start, range.start)) * laneWidth() / range.span;
+    const mark = button((index + 1) + ' ' + act.title, () => seekFrame(act.start),
+      'chapter' + (width < 72 ? ' compact-chapter' : ''));
+    mark.setAttribute('aria-label', (index + 1) + ' · ' + act.title);
     mark.style.setProperty('--chapter-color', act.color || colors[act.layer] || '#747a7d');
     mark.dataset.start = act.start;
     mark.dataset.end = act.end;
-    mark.title = [act.layer, act.title, model.generic ? '项目章节记录' : '导演交接指导'].filter(Boolean).join(' · ');
+    mark.title = [act.layer, act.title, model.generic ? 'Project chapter markers' : 'Director handoff'].filter(Boolean).join(' · ');
     mark.ondblclick = () => zoomAct(act.start);
     acts.append(pos(mark, act.start, act.end));
   }
-  if (!chapters().length) missing(acts, '无章节记录');
-  const shots = makeRow('镜头 · 卡点', 'review-row shots-row', root).lane;
+  if (!chapters().length) missing(acts, 'No chapter markers');
+  const shots = makeRow('Shots / cues', 'review-row shots-row', root).lane;
   if (model.reviewData) {
     const actual = pictureClips().filter(clip => clip.shot).map(clip => ({ frame: clip.position, title: clip.shot }));
-    reviewMarks(shots, [...model.reviewData.shots, ...actual].sort((a, b) => a.frame - b.frame), 'shot-mark');
+    const unique = new Map();
+    for (const mark of [...actual, ...model.reviewData.shots]) unique.set(mark.frame + '|' + mark.title, mark);
+    reviewMarks(shots, [...unique.values()], 'shot-mark');
     reviewMarks(shots, model.reviewData.cues.map(mark => ({ ...mark, symbol: '◆' })), 'cue-mark');
-  } else missing(shots, '无镜头时间表');
+  } else missing(shots, 'No shot markers');
   const opening = currentView === 'opening';
-  const notes = makeRow(opening ? '开场指令' : '导演指令', 'review-row notes-row', root).lane;
   const tasks = reviewNotes();
+  const noteRow = makeRow((opening ? 'Opening annotations' : 'Annotations') + ' · ' + tasks.length, 'review-row notes-row', root);
+  const notes = noteRow.lane;
+  noteRow.head.title = 'Click a number to locate its annotation. Use [ or ] for the previous or next annotation';
   const noteWindow = opening ? openingNoteRange || { start: 0, span: Math.max(1, model.opening.seconds * model.fps) } : range;
   if (tasks.length) renderNoteMarks(notes, tasks, noteWindow);
-  else missing(notes, '0 条时间指令');
+  else missing(notes, 'No frame-linked annotations');
   if (heightMode === 'expanded' && model.reviewData) {
-    const sound = makeRow('声音线索', 'review-row sounds-row', root).lane;
+    const sound = makeRow('Sound cues', 'review-row sounds-row', root).lane;
     reviewMarks(sound, model.reviewData.sounds.map(mark => ({ ...mark, symbol: '◆' })), 'cue-mark');
   }
   for (const lane of root.querySelectorAll('.lane')) selectionBand(lane);
@@ -642,7 +669,7 @@ async function loadPeaks() {
   const source = peakUrl;
   try {
     const response = await fetch(source);
-    if (!response.ok) throw Error('混音不可用');
+    if (!response.ok) throw Error('Mix is unavailable');
     const buffer = await new OfflineAudioContext(1, 1, 12000).decodeAudioData(await response.arrayBuffer());
     const values = new Float32Array(Math.ceil(buffer.duration * 48));
     for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
@@ -659,10 +686,10 @@ async function loadPeaks() {
 }
 function waveform(node, clip, width, start, end) {
   if (!peaks) {
-    node.append(el('span', peaks === false ? '混音波形不可用' : '正在读取混音波形…', { class: 'clip-caption' }));
+    node.append(el('span', peaks === false ? 'Mix waveform unavailable' : 'Loading mix waveform...', { class: 'clip-caption' }));
     return;
   }
-  const graph = el('canvas', '', { class: 'waveform', 'aria-label': '当前混音实际波形' });
+  const graph = el('canvas', '', { class: 'waveform', 'aria-label': 'Current mix waveform' });
   graph.width = Math.max(1, Math.ceil(width));
   graph.height = 60;
   const paint = graph.getContext('2d');
@@ -679,16 +706,18 @@ function waveform(node, clip, width, start, end) {
   node.append(graph);
 }
 let thumbnailSource, thumbnailCache = new Map(), thumbnailQueue = Promise.resolve();
-function thumbnailAt(frame) {
+function thumbnailAt(frame, width, height) {
   const source = model.segment.url;
-  if (thumbnailSource !== source) {
-    thumbnailSource = source;
+  const identity = source + '|' + model.video.actualSha256;
+  if (thumbnailSource !== identity) {
+    thumbnailSource = identity;
     thumbnailCache = new Map();
   }
-  if (thumbnailCache.has(frame)) return thumbnailCache.get(frame);
+  const key = [frame, width, height].join(':');
+  if (thumbnailCache.has(key)) return thumbnailCache.get(key);
   const time = frameMidpoint(frame);
   const promise = thumbnailQueue.then(async () => {
-    if (thumbnailSource !== source) return null;
+    if (thumbnailSource !== identity) return null;
     const video = el('video');
     try {
       await new Promise((resolve, reject) => {
@@ -702,14 +731,24 @@ function thumbnailAt(frame) {
         video.onerror = () => { clearTimeout(timeout); reject(Error('thumbnail unavailable')); };
         video.src = source;
       });
-      const image = el('canvas', '', { width: 160, height: 90 });
-      image.getContext('2d').drawImage(video, 0, 0, 160, 90);
+      const scale = Math.min(1, width / video.videoWidth, height / video.videoHeight);
+      const original = el('canvas', '', { width: video.videoWidth, height: video.videoHeight });
+      original.getContext('2d').drawImage(video, 0, 0);
+      if (scale === 1) return original;
+      const image = el('canvas', '', {
+        width: Math.max(1, Math.ceil(video.videoWidth * scale)),
+        height: Math.max(1, Math.ceil(video.videoHeight * scale))
+      });
+      const context = image.getContext('2d');
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(original, 0, 0, image.width, image.height);
+      original.width = original.height = 1;
       return image;
     } catch { return null; }
     finally { video.removeAttribute('src'); video.load(); }
   });
   thumbnailQueue = promise;
-  thumbnailCache.set(frame, promise);
+  thumbnailCache.set(key, promise);
   if (thumbnailCache.size > 100) thumbnailCache.delete(thumbnailCache.keys().next().value);
   return promise;
 }
@@ -717,16 +756,26 @@ function appendThumbnails(node, clip, start, end, width) {
   if (!model.wholeFilm) return;
   const count = Math.min(7, Math.max(1, Math.ceil(width / (heightMode === 'expanded' ? 196 : 89))));
   const strip = el('span', '', { class: 'thumbnail-strip' });
+  strip.style.setProperty('--thumbnail-ratio', (model.video.width || 16) / (model.video.height || 9));
   node.append(strip);
   for (let i = 0; i < count; i++) {
     if (clip.thumbnail) {
       strip.append(el('img', '', { src: clip.thumbnail, alt: '', class: 'clip-thumbnail' }));
     } else {
-      const thumb = el('canvas', '', { class: 'clip-thumbnail', width: 160, height: 90, 'aria-hidden': 'true' });
+      const thumb = el('canvas', '', { class: 'clip-thumbnail', width: 1, height: 1, 'aria-hidden': 'true' });
       strip.append(thumb);
       const frame = Math.ceil(start + (end - start) * i / count);
-      thumbnailAt(frame).then(image => {
-        if (image && thumb.isConnected) thumb.getContext('2d').drawImage(image, 0, 0);
+      requestAnimationFrame(() => {
+        if (!thumb.isConnected) return;
+        const bounds = thumb.getBoundingClientRect();
+        const scale = window.devicePixelRatio || 1;
+        thumbnailAt(frame, Math.ceil(bounds.width * scale), Math.ceil(bounds.height * scale)).then(image => {
+          if (!image || !thumb.isConnected) return;
+          thumb.width = image.width;
+          thumb.height = image.height;
+          thumb.getContext('2d').drawImage(image, 0, 0);
+          thumb.dataset.frame = frame;
+        });
       });
     }
   }
@@ -758,11 +807,11 @@ function renderClip(lane, track, clip, pixels) {
   if (track.type === 'audio' && model.mixUrl) waveform(content, clip, width, start, end);
   if (model.reviewData && track.type === 'video' && !clip.shot) {
     for (const mark of model.reviewData.shots) if (mark.frame > start && mark.frame < end) {
-      content.append(pos(el('span', '', { class: 'internal-boundary', title: '镜头时间表 · ' + mark.title }),
+      content.append(pos(el('span', '', { class: 'internal-boundary', title: 'Shot markers - ' + mark.title }),
         mark.frame, undefined, { start, span: end - start }));
     }
   }
-  if (clip.placeholder && width >= 84 && width < 110) content.append(el('span', '占位', { class: 'clip-state' }));
+  if (clip.placeholder && width >= 84 && width < 110) content.append(el('span', 'Placeholder', { class: 'clip-state' }));
   if (width < 12) {
     item.classList.add('small-hit');
     content.style.width = Math.max(6, width) + 'px';
@@ -777,13 +826,13 @@ function placeClusterMenu(anchor, menu, gap = 1) {
 function renderCluster(lane, track, clips) {
   const first = clips[0].position, end = clipEnd(clips.at(-1));
   const group = pos(el('div', '', { class: 'cluster' }), first, end);
-  const open = button(clips.length + ' 段', () => setRange(first - (end - first) * .3, (end - first) * 1.6), 'cluster-button');
-  open.title = '放大 ' + clips.length + ' 个短片段';
+  const open = button(countLabel(clips.length, 'clip'), () => setRange(first - (end - first) * .3, (end - first) * 1.6), 'cluster-button');
+  open.title = 'Zoom in ' + clips.length + ' short clips';
   const bars = el('span', '', { class: 'cluster-bars', 'aria-hidden': 'true' });
   const menu = el('div', '', { class: 'cluster-menu' });
   for (const clip of clips) {
     bars.append(el('i', '', { class: clip.placeholder ? 'placeholder' : '' }));
-    menu.append(button((clip.shot || clip.name) + ' · ' + ((clip.end - clip.start) / model.fps).toFixed(3) + ' 秒',
+    menu.append(button((clip.shot || clip.name) + ' · ' + ((clip.end - clip.start) / model.fps).toFixed(3) + ' s',
       () => chooseClip(track, clip, 'selection')));
   }
   open.append(bars);
@@ -801,8 +850,8 @@ function renderTracks() {
     if (heightMode === 'collapsed' && track !== pictureTrack()) continue;
     const { head, lane } = makeRow('', 'project-track ' + track.type, container);
     head.append(el('strong', trackCode(track)), el('span',
-      model.generic ? track.name : model.wholeFilm ? (track.type === 'audio' ? '混音 · 未分轨' : '画面') : trackLabels[track.name] || track.name),
-      el('small', 'Kdenlive · ' + track.clips.length + ' 段'));
+      model.generic ? track.name : model.wholeFilm ? (track.type === 'audio' ? 'Mix - combined' : 'Picture') : trackLabels[track.name] || track.name),
+      el('small', 'Kdenlive · ' + countLabel(track.clips.length, 'clip')));
     head.title = track.name;
     const visible = track.clips.filter(clip => intersects(clip.position, clipEnd(clip))).sort((a, b) => a.position - b.position);
     for (let i = 0; i < visible.length;) {
@@ -816,7 +865,7 @@ function renderTracks() {
       else renderClip(lane, track, clip, pixels);
       i = next;
     }
-    if (!track.clips.length) missing(lane, '空轨');
+    if (!track.clips.length) missing(lane, 'Empty track');
     selectionBand(lane);
   }
 }
@@ -863,7 +912,7 @@ $('loop-shot').onclick = toggleLoop;
 $('mute').onclick = () => {
   muted = !muted;
   if (player instanceof HTMLMediaElement) player.muted = muted;
-  $('mute').textContent = muted ? '已静音' : '音量';
+  $('mute').textContent = muted ? 'Muted' : 'Volume';
   $('mute').setAttribute('aria-pressed', muted);
 };
 $('speed').onclick = () => {
@@ -896,7 +945,8 @@ document.addEventListener('keydown', event => {
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
     action = () => event.altKey ? jumpCut(direction) : stepFrame(direction);
   } else if (event.code === 'Space') action = togglePlayback;
-  else if (event.key === 'Escape') action = () => $('review').classList.remove('show-inspector');
+  else if (event.key === 'Escape') action = document.fullscreenElement === reviewMonitor ? toggleReviewFullscreen :
+    () => $('review').classList.remove('show-inspector');
   if (!action) return;
   event.preventDefault();
   action();
@@ -906,3 +956,10 @@ window.addEventListener('resize', () => {
   cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(renderTimeline);
 });
+function watchThumbnailScale() {
+  matchMedia('(resolution: ' + window.devicePixelRatio + 'dppx)').addEventListener('change', () => {
+    watchThumbnailScale();
+    renderTimeline();
+  }, { once: true });
+}
+watchThumbnailScale();

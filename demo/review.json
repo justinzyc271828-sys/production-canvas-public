@@ -1,26 +1,26 @@
 {
-  "timelineRevision": "468fdf728526dfdc6edf94d792d8f58ac63eb8ca7536dc4c73b3073071c9d39a",
+  "timelineRevision": "a05d6155efc2c08e2a3d4cab00d453cf8b502abf51b35db7042e4ff782e06f0e",
   "chapters": [
     {
-      "title": "认识画面",
+      "title": "Read the frame",
       "start": 0,
       "end": 216,
       "color": "#526c80"
     },
     {
-      "title": "短镜头练习",
+      "title": "Short-shot practice",
       "start": 216,
       "end": 360,
       "color": "#717753"
     },
     {
-      "title": "停帧与指令",
+      "title": "Pause and annotate",
       "start": 360,
       "end": 540,
       "color": "#9c7560"
     },
     {
-      "title": "回到全片",
+      "title": "Return to the film",
       "start": 540,
       "end": 720,
       "color": "#766485"
@@ -205,25 +205,25 @@
   "cues": [
     {
       "frame": 300,
-      "title": "连续短镜头"
+      "title": "Rapid cuts"
     },
     {
       "frame": 420,
-      "title": "在这一帧记指令"
+      "title": "Annotate this frame"
     },
     {
       "frame": 612,
-      "title": "对照节拍"
+      "title": "Compare the beat"
     }
   ],
   "sounds": [
     {
       "frame": 0,
-      "title": "原创建拍声"
+      "title": "Original pulse"
     },
     {
       "frame": 360,
-      "title": "旋律变化"
+      "title": "Melody change"
     }
   ],
   "music": {

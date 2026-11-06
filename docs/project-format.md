@@ -3,8 +3,20 @@
 ## Start with a video and an edit
 
 Create a directory containing the review video, its matching Kdenlive edit
-and a project.json file. Choose **项目 → 打开项目清单…**, or select the directory
-with **接入本地影片目录…**.
+and a project.json file. Choose **Project → Open project manifest...**, or select
+the directory with **Open local film folder...**.
+
+You can also use **Project → Open review video...** or open the MP4 with Production
+Canvas from Windows Explorer. Canvas matches the exact file against your
+registered projects and nearby `project.json` or `project-*.json` manifests.
+If no project matches or multiple nearby manifests match, open the intended
+manifest directly.
+
+File opening uses the complete resolved path, including its directory.
+Two files with the same name in different project directories remain separate.
+Conflicting registered manifests require an explicit choice. Opening a second
+file reuses the current profile's window, and an unsaved direction prevents
+switching. The app remembers the last selected project and review version.
 
 ```json
 {
@@ -27,7 +39,7 @@ Kdenlive effects during playback.
 All paths in project.json and review.json are relative to the project
 directory. File references must resolve inside that directory, including
 symlink targets. The native Kdenlive file retains its own media-reference
-convention. Keep its source media inside the project when using **看原素材**.
+convention. Keep its source media inside the project when using **Sources**.
 
 The bundled [sample](../demo/project.json) is a complete working example.
 Copy the entire demo directory to another location before replacing its
@@ -181,5 +193,5 @@ edit/production-canvas/review-data.json path. No film-specific editorial JSON
 is bundled with the application.
 
 The old sample folder is preserved when upgrading. It remains available as
-**旧版示例与指令** when present. The new complete sample uses a different folder,
+**Legacy sample and directions** when present. The new complete sample uses a different folder,
 so initializing it does not overwrite earlier sample notes.

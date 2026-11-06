@@ -131,7 +131,7 @@
   "tracks": [
     {
       "id": 0,
-      "name": "画面",
+      "name": "Picture",
       "type": "video",
       "clips": [
         {
@@ -266,7 +266,7 @@
     },
     {
       "id": 1,
-      "name": "混音",
+      "name": "Mix",
       "type": "audio",
       "clips": [
         {

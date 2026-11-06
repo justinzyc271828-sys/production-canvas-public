@@ -19,16 +19,17 @@ let playbackRate = 1;
 let muted = false;
 let loop = null;
 let lastSavedDirectionId = null;
+let projectLoad = 0;
 
 const stages = {
-  start: '排队', connect: '连接本地工具', copy: '复制工作版', edit: '修改剪辑',
-  'starting-render': '准备渲染', render: '渲染预览', validate: '验证工作流', comfy: '取回参考图', review: '可审阅'
+  start: 'Queued', connect: 'Connecting local tool', copy: 'Copying working version', edit: 'Editing timeline',
+  'starting-render': 'Preparing render', render: 'Rendering preview', validate: 'Validating workflow', comfy: 'Retrieving references', review: 'Ready for review'
 };
-const statuses = { completed: '已完成 · 候选', failed: '失败', attention: '待检查', running: '运行中', queued: '排队' };
+const statuses = { completed: 'Completed - candidate', failed: 'Failed', attention: 'Needs attention', running: 'Running', queued: 'Queued' };
 const trackLabels = {
-  'Lighting review picture': '画面底稿', 'Title - approved typography': '标题叠加',
-  'room-tone': '环境底噪', breath: '呼吸', steps: '脚步', button: '按钮', landing: '落地',
-  clothing: '衣物', 'Main score - EMPTY': '主配乐 · 待选'
+  'Lighting review picture': 'Picture source', 'Title - approved typography': 'Title overlay',
+  'room-tone': 'Room tone', breath: 'Breath', steps: 'Footsteps', button: 'Button', landing: 'Landing',
+  clothing: 'Clothing', 'Main score - EMPTY': 'Main score - pending'
 };
 const api = (suffix = '') => '/api/canvas/projects/' + encodeURIComponent(project) + suffix;
 const query = () => draft ? '?draft=' + encodeURIComponent(draft) : '';
@@ -53,7 +54,7 @@ async function request(url, payload) {
   };
   const response = await fetch(url, options);
   const value = await response.json();
-  if (!response.ok) throw new Error(value.error || '请求失败');
+  if (!response.ok) throw new Error(value.error || 'Request failed');
   return value;
 }
 
@@ -68,16 +69,39 @@ function tell(text, error = false) {
 }
 
 function sec(value) {
-  return Number(value).toFixed(2) + ' 秒';
+  return Number(value).toFixed(2) + ' s';
 }
 
-function setUrl() {
+function countLabel(count, noun) {
+  return count + ' ' + noun + (count === 1 ? '' : 's');
+}
+
+function setUrl(view) {
   const url = new URL(location.href);
   url.searchParams.set('project', project);
   if (draft) url.searchParams.set('draft', draft);
   else url.searchParams.delete('draft');
+  if (view) url.searchParams.set('view', view);
+  else url.searchParams.delete('view');
   history.replaceState(null, '', url);
 }
+
+const reviewMonitor = $('review').querySelector('.monitor');
+const fullscreenControl = $('review-fullscreen');
+async function toggleReviewFullscreen() {
+  try {
+    if (document.fullscreenElement === reviewMonitor) await document.exitFullscreen();
+    else await reviewMonitor.requestFullscreen();
+  } catch (error) {
+    tell('Could not change fullscreen mode: ' + error.message, true);
+  }
+}
+fullscreenControl.addEventListener('click', toggleReviewFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  const label = document.fullscreenElement === reviewMonitor ? 'Exit fullscreen' : 'Fullscreen';
+  fullscreenControl.setAttribute('aria-label', label);
+  fullscreenControl.title = label;
+});
 
 function media(view, type, url, label, start = 0, play = false, exact = false) {
   currentView = view;
@@ -90,6 +114,7 @@ function media(view, type, url, label, start = 0, play = false, exact = false) {
   if (player && typeof player.pause === 'function') player.pause();
   const mediaNode = el(type === 'image' ? 'img' : type, '', { src: url, 'aria-label': label });
   player = mediaNode;
+  fullscreenControl.hidden = !document.fullscreenEnabled || type === 'audio';
   if (type === 'video') trackVideoFrames(mediaNode);
   else { if (videoClock) settleFrameSeek(videoClock, false); videoClock = null; }
   if (type === 'image') {
@@ -114,19 +139,19 @@ function media(view, type, url, label, start = 0, play = false, exact = false) {
       else if (screening && currentView === 'opening') showSegment('s03', 0, true);
       else if (screening && currentView === 's03') {
         screening = false;
-        tell('已播完当前可看片段。');
+        tell('The current review sequence has ended.');
       }
     });
   }
   player.addEventListener('error', () => {
-    if (player === mediaNode) tell('当前素材无法播放，请检查文件或换看段落预览。', true);
+    if (player === mediaNode) tell('This source cannot play. Check the file or select a section preview.', true);
   });
   $('player').replaceChildren(player);
   renderTransport();
   renderTimeline();
   if (play && type !== 'image') {
     mediaNode.play().catch(() => {
-      if (player === mediaNode) tell('已切到下一段，点击播放继续。');
+      if (player === mediaNode) tell('Next section selected. Press Play to continue.');
     });
   }
 }
@@ -134,20 +159,22 @@ function media(view, type, url, label, start = 0, play = false, exact = false) {
 function showSegment(view, start = 0, play = false, exact = false) {
   if (!model) return;
   if (view === 'battle') {
-    media(view, 'video', model.focus.url, model.viewLabels?.battle || '重点片段', start, play, exact);
-    return;
-  }
-  const opening = view === 'opening';
-  media(view, 'video', opening ? model.opening.url : model.segment.url,
-    opening ? (model.opening.approved ? '开场 · 已定稿' : '开场 · 当前记录') :
-      (draft ? '草稿预览' : model.viewLabels?.s03 || '剪辑候选'), start, play, exact);
-  if (opening) {
-    for (const marker of model.opening.markers || []) {
-      $('markers').append(button(marker.label + ' · ' + sec(marker.seconds), () => {
-        seekLocalFrame(Math.round(marker.seconds * model.fps));
-      }));
+    media(view, 'video', model.focus.url, model.viewLabels?.battle || 'Focus range', start, play, exact);
+  } else {
+    const opening = view === 'opening';
+    media(view, 'video', opening ? model.opening.url : model.segment.url,
+      opening ? (model.opening.approved ? 'Opening - approved' : 'Opening - current record') :
+        (draft ? 'Draft preview' : model.viewLabels?.s03 || 'Edit candidate'), start, play, exact);
+    if (opening) {
+      for (const marker of model.opening.markers || []) {
+        $('markers').append(button(marker.label + ' · ' + sec(marker.seconds), () => {
+          seekLocalFrame(Math.round(marker.seconds * model.fps));
+        }));
+      }
     }
   }
+  setUrl(view);
+  if (!draft) request('/desktop/review-selection', { project, view }).catch(error => tell(error.message, true));
 }
 
 function numberField(id, label, value, max) {
@@ -172,16 +199,16 @@ function renderInspector() {
   const status = el('p', '', { class: clip.placeholder ? 'still-status' : 'chip' });
   const refreshStatus = () => {
     const decision = model.decisions[shotDecisionKey(track, clip)];
-    status.textContent = decision === 'pass' ? '镜头审阅 · 通过' : decision === 'redo' ? '镜头审阅 · 需重做' :
-      clip.placeholder ? (model.generic ? '占位镜头 · 待审' : '占位 · 静态首帧 · 待审') : '剪辑片段';
+    status.textContent = decision === 'pass' ? 'Shot review - accepted' : decision === 'redo' ? 'Shot review - revise' :
+      clip.placeholder ? (model.generic ? 'Placeholder shot - pending' : 'Placeholder - static first frame - pending') : 'Edit clip';
   };
   refreshStatus();
   target.append(status, el('p', timecode(clip.position) + ' – ' + timecode(clipEnd(clip)), { class: 'clip-range' }),
-    el('p', (clip.end - clip.start) + ' 帧 · ' + ((clip.end - clip.start) / fps).toFixed(3) + ' 秒 · ' + trackCode(track), { class: 'hint' }));
-  if (clip.thumbnail) target.append(el('img', '', { class: 'inspector-still', alt: '项目提供的镜头缩略图', src: clip.thumbnail }));
+    el('p', countLabel(clip.end - clip.start, 'frame') + ' - ' + ((clip.end - clip.start) / fps).toFixed(3) + ' s · ' + trackCode(track), { class: 'hint' }));
+  if (clip.thumbnail) target.append(el('img', '', { class: 'inspector-still', alt: 'Project-provided shot thumbnail', src: clip.thumbnail }));
   if (model.wholeFilm) {
     const actions = el('div', '', { class: 'row' });
-    for (const [state, label] of [['pass', '通过'], ['redo', '需重做']]) {
+    for (const [state, label] of [['pass', 'Accept'], ['redo', 'Revise']]) {
       actions.append(button(label, async () => {
         try {
           const owner = model;
@@ -191,39 +218,39 @@ function renderInspector() {
         } catch (error) { tell(error.message, true); }
       }));
     }
-    actions.append(button('循环本镜', toggleLoop));
+    actions.append(button('Loop shot', toggleLoop));
     target.append(actions);
-    if (clip.graphNode) target.append(button('在 ComfyUI 查看节点 #' + clip.graphNode, () => toggleComfy(true, clip.graphNode)));
+    if (clip.graphNode) target.append(button('View ComfyUI node #' + clip.graphNode, () => toggleComfy(true, clip.graphNode)));
   }
-  target.append(el('p', '来源 · ' + track.name + ' · ' + clip.bin, { class: 'hint' }));
-  if (model.generic) target.append(el('p', '标注编号 · track ' + track.id + ' · clip ' + clip.index, { class: 'hint' }));
+  target.append(el('p', 'Source - ' + track.name + ' · ' + clip.bin, { class: 'hint' }));
+  if (model.generic) target.append(el('p', 'Annotation reference - track ' + track.id + ' · clip ' + clip.index, { class: 'hint' }));
   if (clip.effects.length) {
     const effects = el('details');
-    effects.append(el('summary', '查看片段效果参数'), el('pre', JSON.stringify(clip.effects, null, 2)));
+    effects.append(el('summary', 'Show clip effect parameters'), el('pre', JSON.stringify(clip.effects, null, 2)));
     target.append(effects);
   }
-  target.append(button('看原素材', () => {
+  target.append(button('View source', () => {
     screening = false;
     media('asset', clip.mediaType, model.mediaBase + 'bin-' + encodeURIComponent(clip.bin) + query(), clip.name);
   }, 'secondary'));
   const form = el('form');
-  const choice = el('label', '修改方式');
+  const choice = el('label', 'Edit operation');
   const operation = el('select', '', { id: 'operation' });
-  operation.append(el('option', '裁切源素材入出点', { value: 'trim' }), el('option', '移动片段位置', { value: 'move' }));
+  operation.append(el('option', 'Trim source in/out points', { value: 'trim' }), el('option', 'Move clip', { value: 'move' }));
   choice.append(operation);
   form.append(choice);
   const trim = el('div', '', { class: 'form-row' });
-  trim.append(numberField('source-in', '源入点（帧）', clip.start, clip.max - 1),
-    numberField('source-out', '源出点（不含此帧）', clip.end, clip.max));
-  const move = numberField('position', '段内位置（帧）', clip.position, model.frames + Math.round(5 * fps));
+  trim.append(numberField('source-in', 'Source in (frame)', clip.start, clip.max - 1),
+    numberField('source-out', 'Source out (exclusive)', clip.end, clip.max));
+  const move = numberField('position', 'Position in sequence (frame)', clip.position, model.frames + Math.round(5 * fps));
   move.hidden = true;
   operation.addEventListener('change', () => {
     trim.hidden = operation.value !== 'trim';
     move.hidden = !trim.hidden;
   });
   form.append(trim, move);
-  form.append(el('p', fps + ' fps · 裁切保留片段位置，缩短可能留下空位。', { class: 'hint' }));
-  const submit = el('button', '另存草稿并渲染', { class: 'primary', type: 'submit', id: 'render-edit' });
+  form.append(el('p', fps + ' fps - trimming preserves clip position. Shortening can leave a gap.', { class: 'hint' }));
+  const submit = el('button', 'Save draft and render', { class: 'primary', type: 'submit', id: 'render-edit' });
   form.append(submit);
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -235,7 +262,7 @@ function renderInspector() {
       };
       const run = await request(api('/edits'), payload);
       updateJob(run);
-      tell('草稿任务已登记。' + (run.status === 'completed' ? ' 可打开已有预览。' : ' 进度见「工程」。'));
+      tell('Draft job registered.' + (run.status === 'completed' ? ' The existing preview is available.' : ' See Details for progress.'));
       if (run.status === 'completed') await openDraft(run.id);
       else schedulePoll(run.id);
     } catch (error) {
@@ -245,27 +272,27 @@ function renderInspector() {
     }
   });
   if (model.canEdit) target.append(form);
-  else target.append(el('p', model.wholeFilm ? '当前为审片模式。' : '可查看素材与剪点。要渲染剪辑草稿，请在桌面菜单接入 Kdenlive MCP。', { class: 'hint' }));
+  else target.append(el('p', model.wholeFilm ? 'Review mode is active.' : 'Inspect sources and cuts. To render a draft, connect Kdenlive MCP from the desktop menu.', { class: 'hint' }));
   appendInspectorNotes(target);
 }
 
 function renderJobs() {
   const root = $('jobs');
   root.replaceChildren();
-  if (!model.jobs.length) root.append(el('p', '本画布的本地任务会保存在这里。', { class: 'hint' }));
+  if (!model.jobs.length) root.append(el('p', 'Local canvas jobs appear here.', { class: 'hint' }));
   for (const run of model.jobs) {
     const item = el('article', '', { class: 'item', 'data-job': run.id });
     item.append(el('h3', run.title), el('p', (statuses[run.status] || run.status) + ' · ' + (stages[run.stage] || run.stage), { class: 'hint' }));
     if (run.kind === 'edit' && run.before) {
       const { before, after } = run;
-      item.append(el('small', '位置 ' + before.position + ' → ' + after.position + ' 帧 · 源区间 [' +
+      item.append(el('small', 'Position ' + before.position + ' → ' + after.position + ' frames - source range [' +
         before.start + ', ' + before.end + ') → [' + after.start + ', ' + after.end + ')'));
     }
     if (run.error) item.append(el('p', run.error, { class: 'hint' }));
     if (run.status === 'completed' && run.kind === 'edit') {
       const links = el('div', '', { class: 'row' });
-      links.append(button('打开草稿', () => openDraft(run.id).catch(error => tell(error.message, true))),
-        el('a', '下载可编辑工程', { href: model.mediaBase + 'editable?draft=' + run.id }));
+      links.append(button('Open draft', () => openDraft(run.id).catch(error => tell(error.message, true))),
+        el('a', 'Download editable project', { href: model.mediaBase + 'editable?draft=' + run.id }));
       item.append(links);
     }
     if (run.status === 'completed' && run.kind === 'references') {
@@ -273,7 +300,7 @@ function renderJobs() {
       for (const angle of ['a', 'b', 'c']) {
         const url = model.mediaBase + 'reference-' + angle + '?run=' + run.id;
         const link = el('a', '', { href: url, target: '_blank', rel: 'noopener' });
-        link.append(el('img', '', { src: url, alt: angle.toUpperCase() + ' 机位参考', loading: 'lazy' }));
+        link.append(el('img', '', { src: url, alt: angle.toUpperCase() + ' camera reference', loading: 'lazy' }));
         refs.append(link);
       }
       item.append(refs);
@@ -304,11 +331,11 @@ function schedulePoll(openId) {
         if (current.status === 'completed' && current.id === pendingOpen && current.kind === 'edit') {
           pendingOpen = null;
           await openDraft(current.id);
-          tell('草稿预览已完成，可检查修改并打开可编辑工程。');
+          tell('Draft preview is ready. Inspect the changes or open the editable project.');
         }
         if (['failed', 'attention'].includes(current.status)) {
           if (pendingOpen === current.id) pendingOpen = null;
-          tell(current.error || '请检查任务。', true);
+          tell(current.error || 'Check the job.', true);
         }
       }
       if (model.jobs.some(run => run.status === 'queued' || run.status === 'running')) {
@@ -318,7 +345,7 @@ function schedulePoll(openId) {
       }
     } catch (error) {
       polling = false;
-      tell('暂时无法读取任务状态。刷新可从项目记录恢复。' + error.message, true);
+      tell('Job status is temporarily unavailable. Reload to recover the project record. ' + error.message, true);
     }
   };
   setTimeout(check, 300);
@@ -327,36 +354,46 @@ function schedulePoll(openId) {
 function renderTasks() {
   const root = $('tasks');
   root.replaceChildren();
-  if (!model.tasks.length) root.append(el('p', '这里会保留你的原始指令和按版本回填的结果。', { class: 'hint' }));
-  const unavailable = el('section', '', { 'aria-label': '无法定位' });
+  if (!model.tasks.length) root.append(el('p', 'Original annotations and version-linked results appear here.', { class: 'hint' }));
+  const unavailable = el('section', '', { 'aria-label': 'Unlocated' });
   for (const item of model.tasks) {
     const location = resolveNote(item);
     const card = el('details', '', { class: 'item', 'data-task': item.id });
-    const status = item.result ? '候选已回填' : '待交给 Codex';
+    const status = item.result ? 'Candidate attached' : 'Ready for Codex';
     card.append(el('summary', item.title + ' · ' + status));
     card.append(el('p', item.target + ' · ' + model.crafts[item.route], { class: 'hint' }), el('pre', item.text));
     if (item.anchor) {
       card.append(el('p', [anchorDetails(item.anchor), noteStatus(item, location)].filter(Boolean).join(' · '), { class: 'hint' }));
-      if (location) card.append(button('跳到这一帧', () => jumpNote(item)));
+      if (location) card.append(button('Go to frame', () => jumpNote(item)));
     }
-    const handoff = '项目 ' + model.title + '\n任务 ' + item.title + '\n对象 ' + item.target + '\n路线 ' + model.crafts[item.route] + '\n原文\n' + item.text + '\n本地任务记录 ' + item.receiptPath;
-    card.append(button('复制交接指令', async () => {
+    const handoff = [
+      'Production Canvas annotation',
+      'Project ' + model.title,
+      'Annotation ' + item.title,
+      'Target ' + item.target,
+      'Workflow ' + model.crafts[item.route],
+      'Original author text', item.text,
+      'Original frame anchor', JSON.stringify(item.anchor || {}, null, 2),
+      'Current resolved location', JSON.stringify(location || { status: 'unlocated' }, null, 2),
+      'Local record ' + item.receiptPath
+    ].join('\n');
+    card.append(button('Copy for Codex', async () => {
       try {
         await navigator.clipboard.writeText(handoff);
-        tell('已复制。可以粘贴到当前 Codex 对话。');
+        tell('Copied. Paste into your current Codex chat.');
       } catch {
-        tell('可手动复制这条任务记录路径：' + item.receiptPath);
+        tell('Copy this task-record path manually: ' + item.receiptPath);
       }
     }));
     if (item.result) {
-      card.append(el('p', item.result.note, { class: 'hint' }), el('a', '打开候选结果', {
+      card.append(el('p', item.result.note, { class: 'hint' }), el('a', 'Open candidate', {
         href: item.result.url, target: '_blank', rel: 'noopener'
       }));
     }
     (item.anchor && !location ? unavailable : root).append(card);
   }
   if (unavailable.childElementCount) {
-    unavailable.prepend(el('h3', '无法定位'));
+    unavailable.prepend(el('h3', 'Unlocated'));
     root.append(unavailable);
   }
 }
@@ -370,10 +407,10 @@ function render() {
   $('run-references').hidden = !model.canReferences;
   $('title').textContent = model.title;
   $('review-version').replaceChildren(
-    el('option', draft ? '剪辑草稿' : model.viewLabels?.s03 || '剪辑候选', { value: 's03' }));
-  if (model.focus) $('review-version').append(el('option', model.viewLabels?.battle || '重点片段', { value: 'battle' }));
-  if (model.opening) $('review-version').append(el('option', model.viewLabels?.opening || '开场', { value: 'opening' }));
-  if (draft) $('review-version').append(el('option', '回到项目底稿', { value: 'base' }));
+    el('option', draft ? 'Edit draft' : model.viewLabels?.s03 || 'Edit candidate', { value: 's03' }));
+  if (model.focus) $('review-version').append(el('option', model.viewLabels?.battle || 'Focus range', { value: 'battle' }));
+  if (model.opening) $('review-version').append(el('option', model.viewLabels?.opening || 'Opening', { value: 'opening' }));
+  if (draft) $('review-version').append(el('option', 'Return to source edit', { value: 'base' }));
   resetTimeline();
   $('storyboard').href = model.mediaBase + 'storyboard';
   $('storyboard').hidden = model.hasStoryboard === false;
@@ -383,7 +420,7 @@ function render() {
     media('asset', asset.type, asset.url, asset.title);
     $('side-panel').close();
   }, 'secondary')));
-  $('bindings').replaceChildren(el('p', '当前剪辑文件 ' + model.timelineFile), el('p', '剪辑版本 ' + model.revision, { class: 'hint' }));
+  $('bindings').replaceChildren(el('p', 'Current edit file ' + model.timelineFile), el('p', 'Edit revision ' + model.revision, { class: 'hint' }));
   for (const warning of model.warnings || []) $('bindings').append(el('p', warning, { class: 'hint' }));
   const routes = $('brief').elements.route;
   routes.replaceChildren(...Object.entries(model.crafts).map(([value, label]) => el('option', label, { value })));
@@ -403,24 +440,20 @@ async function openDraft(id) {
   showSegment('s03');
 }
 
-async function boot() {
+async function boot(view, nextProject = project, nextDraft = draft) {
+  const load = ++projectLoad;
   const projects = await request('/api/canvas/projects');
-  $('project').replaceChildren(...projects.map(p => el('option', p.title, { value: p.id })));
-  if (!projects.some(p => p.id === project)) project = projects[0]?.id;
-  if (!project) throw new Error('尚未登记画布项目');
-  $('project').value = project;
-  model = await request(api(query()));
-  setUrl();
-  render();
-  showSegment(draft || !model.opening ? 's03' : 'opening');
-  tell(model.warnings?.join(' ') || (draft ? '已恢复选中的工作草稿。' : (model.demo ? '内置示例 · 可离线试用' : '本地项目 · 已同步当前版本')));
-  schedulePoll();
-}
-
-$('project').addEventListener('change', () => {
+  if (!nextProject) nextProject = projects[0]?.id;
+  if (!projects.some(p => p.id === nextProject)) throw new Error('This project is not registered. Open it again from the project menu.');
+  const next = await request('/api/canvas/projects/' + encodeURIComponent(nextProject) +
+    (nextDraft ? '?draft=' + encodeURIComponent(nextDraft) : ''));
+  if (view && !['s03', ...(next.focus ? ['battle'] : []), ...(next.opening ? ['opening'] : [])].includes(view)) {
+    throw new Error('No review version in this project matches the selected video.');
+  }
+  if (load !== projectLoad) return;
+  if (model && hasUnsavedDirection()) throw new Error('Save or discard the current annotation before switching projects.');
   closeQuickNote(false);
-  project = $('project').value;
-  draft = null;
+  projectEpoch += 1;
   selected = null;
   polling = false;
   pendingOpen = null;
@@ -429,8 +462,22 @@ $('project').addEventListener('change', () => {
   briefAnchor = null;
   lastSavedDirectionId = null;
   $('brief').reset();
-  projectEpoch += 1;
-  boot().catch(error => tell(error.message, true));
+  project = nextProject;
+  draft = nextDraft;
+  model = next;
+  $('project').replaceChildren(...projects.map(p => el('option', p.title, { value: p.id })));
+  $('project').value = project;
+  render();
+  showSegment(view || (draft || !model.opening ? 's03' : 'opening'));
+  tell(model.warnings?.join(' ') || (draft ? 'Selected working draft restored.' : (model.demo ? 'Built-in sample - available offline' : 'Local project - current version loaded')));
+  schedulePoll();
+}
+
+$('project').addEventListener('change', () => {
+  const next = $('project').value;
+  $('project').value = project;
+  if (hasUnsavedDirection()) return tell('Save or discard the current annotation before switching projects.', true);
+  boot(undefined, next, null).catch(error => tell(error.message, true));
 });
 $('project-menu').onclick = () => request('/desktop/project-menu', {}).catch(error => tell(error.message, true));
 $('review-version').addEventListener('change', () => {
@@ -467,23 +514,24 @@ async function toggleComfy(open, node) {
   const status = $('comfy-status');
   try {
     if (open) {
+      if (document.fullscreenElement === reviewMonitor) await document.exitFullscreen();
       player?.pause?.();
       const thumb = $('return-frame');
       thumb.hidden = !(player instanceof HTMLVideoElement && player.readyState >= 2);
       if (!thumb.hidden) thumb.getContext('2d').drawImage(player, 0, 0, thumb.width, thumb.height);
       const clip = selectedClip();
-      $('return-label').textContent = '← 返回审片 · ' + timecode(playFrame()) + (clip?.shot ? ' · ' + clip.shot : '');
+      $('return-label').textContent = 'Back to review - ' + timecode(playFrame()) + (clip?.shot ? ' · ' + clip.shot : '');
       document.body.dataset.view = 'comfy';
       $('project').disabled = $('review-version').disabled = true;
       status.hidden = false;
       $('retry-comfy').hidden = true;
-      graphStatus('正在连接…');
+      graphStatus('Connecting...');
     }
     const result = await request('/desktop/comfy', { project: open ? project : null, node });
-    if (open) graphStatus('本机已连接', result);
+    if (open) graphStatus('Local connection ready', result);
     else {
       document.body.dataset.view = 'review';
-      $('return-label').textContent = '审片';
+      $('return-label').textContent = 'Review';
       $('return-frame').hidden = status.hidden = true;
       $('project').disabled = $('review-version').disabled = false;
     }
@@ -499,8 +547,8 @@ async function toggleComfy(open, node) {
   }
 }
 function graphStatus(message, result = {}) {
-  $('graph-info').textContent = [model.graph?.name, '第 ' + (result.revision ?? model.graph?.revision) + ' 版',
-    (result.nodes ?? model.graph?.nodes) + ' 个节点', '只读查看', message].join('　·　');
+  $('graph-info').textContent = [model.graph?.name, 'Revision ' + (result.revision ?? model.graph?.revision),
+    (result.nodes ?? model.graph?.nodes) + ' nodes', 'Read-only view', message].join(' · ');
 }
 $('comfy-canvas').onclick = () => toggleComfy(true);
 $('return-review').onclick = () => toggleComfy(false);
@@ -513,7 +561,7 @@ function clearSelection() {
   renderTimeline();
 }
 
-const panelTitles = { materials: '素材', direction: '导演指令', engineering: '工程' };
+const panelTitles = { materials: 'Sources', direction: 'Frame annotations', engineering: 'Details' };
 function openPanel(name) {
   for (const panel of Object.keys(panelTitles)) $(panel).hidden = panel !== name;
   $('panel-title').textContent = panelTitles[name];
@@ -531,7 +579,7 @@ function noteTarget({ section, stamp, version }) {
 }
 
 function noteTitle(text) {
-  return text.split(/(?<=[。！？!?])|(?<=\.)\s+/u)[0].slice(0, 100);
+  return text.split(/(?<=[.！？!?])|(?<=\.)\s+/u)[0].slice(0, 100);
 }
 
 function closeQuickNote(restoreFocus = true) {
@@ -539,6 +587,12 @@ function closeQuickNote(restoreFocus = true) {
   $('quick-note').hidden = true;
   $('inline-note').value = '';
   if (restoreFocus) $('player').focus({ preventScroll: true });
+}
+
+function hasUnsavedDirection() {
+  const fields = $('brief').elements;
+  return Boolean((quickNote && $('inline-note').value.trim()) || quickNote?.saving ||
+    fields.title.value.trim() || fields.target.value.trim() || fields.text.value.trim());
 }
 
 function quickNoteIsAtCurrentFrame() {
@@ -562,10 +616,10 @@ function refreshQuickNote() {
     moved = false;
   }
   const { anchor, stamp, version } = quickNote.context;
-  const current = '当前帧 ' + playFrame() + (anchor.view !== currentView || version !== versionName()
+  const current = 'Current frame ' + playFrame() + (anchor.view !== currentView || version !== versionName()
     ? ' · ' + versionName() : '');
   const label = $('inline-note-label');
-  label.textContent = moved ? '草稿记在 ' + stamp + '（帧 ' + anchor.frame + '），' + current :
+  label.textContent = moved ? 'Draft anchored at ' + stamp + ' (frame ' + anchor.frame + '). ' + current :
     stamp + ' · ' + version;
   label.title = moved ? label.textContent + ' · ' + version : noteTarget(quickNote.context);
   label.classList.toggle('draft-frame-mismatch', moved);
@@ -604,7 +658,7 @@ async function saveQuickNote() {
     lastSavedDirectionId = saved.id;
     if (quickNote === active) {
       closeQuickNote();
-      tell('已保存指令。');
+      tell('Annotation saved.');
     }
     return saved;
   } finally {
@@ -629,7 +683,7 @@ $('detail-note').addEventListener('click', () => {
   openPanel('direction');
   $('new-brief').open = true;
   if (unfinished) {
-    tell('详细表单有未保存内容，快记草稿仍在播放器下方。');
+    tell('The detailed form has unsaved text. Your quick annotation remains below the player.');
   } else {
     const text = $('inline-note').value.trim();
     briefAnchor = quickNote.context.anchor;
@@ -653,7 +707,7 @@ $('brief').addEventListener('submit', async event => {
     briefAnchor = null;
     event.target.reset();
     renderInspector();
-    tell('已保存指令。打开该条目可复制交接信息。');
+    tell('Annotation saved. Open its record to copy the Codex handoff.');
   } catch (error) {
     tell(error.message, true);
   } finally {
@@ -667,7 +721,7 @@ $('run-references').addEventListener('click', async event => {
     const run = await request(api('/references'), {});
     updateJob(run);
     schedulePoll();
-    tell(run.status === 'completed' ? '已打开完成记录。' : '三机位本地工作流已登记，零积分。');
+    tell(run.status === 'completed' ? 'Completed record opened.' : 'Three-angle local workflow registered. No generation credits used.');
   } catch (error) {
     tell(error.message, true);
   } finally {
@@ -679,19 +733,35 @@ function mcpFailure(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+function mcpReviewVideo(view) {
+  if (view === 'opening' && model.opening) {
+    const { url, version, actualSha256, seconds } = model.opening;
+    return { url, version, sha256: actualSha256, start: 0, end: Math.round(seconds * model.fps) };
+  }
+  if (view === 'battle' && model.focus) {
+    const { url, version, actualSha256, start, end } = model.focus;
+    return { url, version, sha256: actualSha256, start, end };
+  }
+  if (view === 's03') {
+    const { url, version } = model.segment;
+    const sha256 = draft ? model.jobs.find(job => job.id === draft)?.preview_sha256 : model.video.actualSha256;
+    return { url, version, sha256, start: 0, end: model.frames };
+  }
+  return null;
+}
+
 function mcpReviewState() {
   if (!model || !(player instanceof HTMLVideoElement)) {
     return { ready: false, project_id: project || null };
   }
-  const media = currentView === 'battle' ? model.focus : currentView === 'opening' ? model.opening : model.video;
+  const media = mcpReviewVideo(currentView);
   const clip = selectedClip();
-  const draftFields = $('brief').elements;
   return {
     ready: player.readyState >= 2 && videoClock?.displayed != null && !videoClock.pending,
     project_id: project, revision: currentView === 'opening' ? model.opening.revision : model.revision,
-    video_sha256: media?.actualSha256 || media?.sha256 || null, video_version: versionName(), current_view: currentView,
+    video_sha256: media?.sha256 || null, video_version: versionName(), current_view: currentView,
     displayed_frame: playFrame(), requested_frame: videoClock?.target == null ? null : videoClock.target + mediaOffset(),
-    fps: model.fps, frames: currentView === 'opening' ? media?.frames || Math.round(player.duration * model.fps) : model.frames,
+    fps: model.fps, frames: currentView === 'opening' ? model.opening.frames || Math.round(player.duration * model.fps) : model.frames,
     current_time: player.currentTime + mediaOffset() / model.fps,
     available_views: ['s03', ...(model.focus ? ['battle'] : []), ...(model.opening ? ['opening'] : [])],
     paused: player.paused, ended: player.ended, ready_state: player.readyState,
@@ -700,8 +770,7 @@ function mcpReviewState() {
     selected_clip: clip ? { track: selected.track, clip: selected.clip, shot: clip.shot || null, frame: clip.position } : null,
     quick_note: quickNote ? { id: quickNote.id, frame: quickNote.context.anchor.frame,
       has_text: Boolean($('inline-note').value.trim()), saving: quickNote.saving } : null,
-    unsaved_direction: Boolean((quickNote && $('inline-note').value.trim()) || quickNote?.saving ||
-      draftFields.title.value.trim() || draftFields.target.value.trim() || draftFields.text.value.trim()),
+    unsaved_direction: hasUnsavedDirection(),
     last_saved_direction_id: lastSavedDirectionId,
     directions: model.tasks.filter(task => task.route === 'direction').map(task => ({
       id: task.id, title: task.title, anchor: task.anchor, resolved: resolveNote(task) })),
@@ -709,45 +778,147 @@ function mcpReviewState() {
   };
 }
 
+function mcpDirectionContext(state) {
+  const views = {};
+  for (const view of state.available_views) {
+    const { url: _localUrl, ...video } = mcpReviewVideo(view);
+    views[view] = { ...video, label: model.viewLabels?.[view] };
+  }
+  const directions = model.tasks.map(({ id, title, target, text, route, created, anchor }) => {
+    const entry = { id, title, target, text, route, created, anchor: anchor ? { ...anchor, timecode: timecode(anchor.frame) } : null };
+    const location = resolveNote({ anchor });
+    if (!location) return { ...entry, status: anchor ? 'unlocated' : 'unanchored' };
+    const { frame, view } = location;
+    const video = views[view];
+    const shots = view === 'opening' ? null : noteShotContext(model, anchor, frame);
+    const frames = new Map();
+    const add = (number, role) => {
+      if (number < video.start || number >= video.end) return;
+      if (!frames.has(number)) frames.set(number, { frame: number, timecode: timecode(number), roles: [] });
+      frames.get(number).roles.push(role);
+    };
+    add(frame, 'anchor');
+    for (const offset of [-2, -1, 1, 2]) add(frame + offset, offset < 0 ? 'before' : 'after');
+    if (shots?.previous) add(shots.previous.end - 1, 'previous_shot_end');
+    if (shots?.next) add(shots.next.start, 'next_shot_start');
+    return { ...entry, status: 'located', resolved: { ...location, timecode: timecode(frame) }, shots,
+      frames: [...frames.values()].sort((a, b) => a.frame - b.frame) };
+  });
+  return { project_id: state.project_id, title: model.title, revision: state.revision, fps: state.fps, views, directions };
+}
+
+async function mcpDirectionFrames(command) {
+  const owner = model;
+  const videoInfo = mcpReviewVideo(command.view);
+  const frames = command.frames;
+  if (!videoInfo?.sha256 || !Array.isArray(frames) || frames.length < 1 || frames.length > 8 ||
+      frames.some(frame => !Number.isSafeInteger(frame) || frame < videoInfo.start || frame >= videoInfo.end) ||
+      new Set(frames).size !== frames.length) throw mcpFailure('invalid_frames', 'Invalid annotation frame range');
+
+  const video = el('video', '', { 'aria-hidden': 'true', inert: '' });
+  video.style.cssText = 'position:fixed;inset:0 auto auto 0;width:1px;height:1px;opacity:0;pointer-events:none';
+  video.preload = 'auto';
+  video.muted = true;
+  let displayed = null;
+  let callback;
+  const follow = (_, { mediaTime }) => {
+    displayed = frameFromMediaTime(mediaTime);
+    callback = video.requestVideoFrameCallback(follow);
+  };
+  const wait = async (test, timeout) => {
+    const deadline = Date.now() + timeout;
+    while (!test() && !video.error && model === owner && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 15));
+    }
+    return test();
+  };
+  const width = 384, height = 240;
+  const columns = Math.min(frames.length, 4);
+  const sheet = el('canvas', '', { width: columns * width, height: Math.ceil(frames.length / columns) * height });
+  const paint = sheet.getContext('2d');
+  const tiles = [];
+  document.body.append(video);
+  try {
+    callback = video.requestVideoFrameCallback(follow);
+    video.src = videoInfo.url;
+    const loaded = await wait(() => video.readyState >= 1, 3000);
+    for (const [index, frame] of frames.entries()) {
+      if (model !== owner) throw mcpFailure('project_changed', 'Project changed while capturing frames');
+      const x = index % columns * width;
+      const y = Math.floor(index / columns) * height;
+      const local = frame - videoInfo.start;
+      const time = frameMidpoint(local);
+      let confirmed = false;
+      if (loaded && time < video.duration && !video.error) {
+        video.currentTime = time;
+        confirmed = await wait(() => !video.seeking && video.readyState >= 2 && displayed === local, 1500);
+      }
+      paint.fillStyle = '#151515';
+      paint.fillRect(x, y, width, height);
+      if (confirmed) {
+        const scale = Math.min(width / video.videoWidth, (height - 24) / video.videoHeight);
+        const w = video.videoWidth * scale, h = video.videoHeight * scale;
+        paint.drawImage(video, x + (width - w) / 2, y + (height - 24 - h) / 2, w, h);
+      }
+      const stamp = timecode(frame);
+      paint.fillStyle = '#ededed';
+      paint.font = '15px sans-serif';
+      paint.fillText(stamp + '  /  Frame ' + frame + (confirmed ? '' : '  /  Unavailable'), x + 8, y + height - 7);
+      tiles.push({ frame, timecode: stamp, x, y, width, height, status: confirmed ? 'verified' : 'unavailable' });
+    }
+    if (model !== owner) throw mcpFailure('project_changed', 'Project changed while capturing frames');
+    mcpCheckIdentity(command);
+    return { view: command.view, version: videoInfo.version, video_sha256: videoInfo.sha256, tiles,
+      ...(tiles.some(tile => tile.status === 'verified') ? { jpeg_base64: sheet.toDataURL('image/jpeg', .91).split(',')[1] } : {}) };
+  } finally {
+    video.cancelVideoFrameCallback(callback);
+    video.removeAttribute('src');
+    video.load();
+    video.remove();
+  }
+}
+
 async function mcpWaitForFrame(frame, epoch) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    if (epoch !== projectEpoch) throw mcpFailure('project_changed', '项目在操作过程中发生变化');
+    if (epoch !== projectEpoch) throw mcpFailure('project_changed', 'Project changed during the operation');
     if (videoClock?.displayed != null && !videoClock.pending && !player.seeking &&
         (frame === undefined || playFrame() === frame)) return mcpReviewState();
     await new Promise(resolve => setTimeout(resolve, 25));
   }
-  throw mcpFailure('frame_not_settled', '未能确认实际显示帧，请先读取当前状态');
+  throw mcpFailure('frame_not_settled', 'The displayed frame could not be confirmed. Read the current state');
 }
 
 function mcpCheckIdentity(command) {
   const state = mcpReviewState();
   const canStartLoading = ['play', 'seek_frame', 'select_view'].includes(command.action) && state.ready_state >= 1;
-  if (!state.ready && !canStartLoading) throw mcpFailure('not_ready', '影片尚未加载完成');
-  if (state.media_error) throw mcpFailure('media_error', state.media_error.message || '影片解码失败');
+  if (!state.ready && !canStartLoading) throw mcpFailure('not_ready', 'The film has not finished loading');
+  if (state.media_error) throw mcpFailure('media_error', state.media_error.message || 'Film decoding failed');
   if (command.project_id !== state.project_id || command.expected_revision !== state.revision ||
       command.expected_video_sha256 !== state.video_sha256) {
-    throw mcpFailure('version_changed', '项目、时间轴或视频版本不匹配');
+    throw mcpFailure('version_changed', 'Project, timeline, or video version does not match');
   }
   if (currentView === 'asset' || document.body.dataset.view === 'comfy') {
-    throw mcpFailure('unsupported_view', '请先切换到影片审看视图');
+    throw mcpFailure('unsupported_view', 'Switch to the film review view first');
   }
   return state;
 }
 
 window.productionCanvasMcp = async command => {
   const actions = ['state', 'select_view', 'seek_frame', 'navigate_shot', 'play', 'pause',
-    'open_direction', 'save_direction', 'jump_to_direction'];
-  if (!command || !actions.includes(command.action)) throw mcpFailure('unknown_command', '不支持的画布控制命令');
+    'open_direction', 'save_direction', 'jump_to_direction', 'list_direction_context', 'capture_direction_frames'];
+  if (!command || !actions.includes(command.action)) throw mcpFailure('unknown_command', 'Unsupported canvas command');
   if (command.action === 'state') return mcpReviewState();
   const state = mcpCheckIdentity(command);
+  if (command.action === 'list_direction_context') return mcpDirectionContext(state);
+  if (command.action === 'capture_direction_frames') return mcpDirectionFrames(command);
   const epoch = projectEpoch;
   const moving = ['select_view', 'seek_frame', 'navigate_shot', 'play', 'jump_to_direction'].includes(command.action);
   if (moving && (quickNote?.saving || (quickNote && $('inline-note').value.trim()))) {
-    throw mcpFailure('unsaved_direction', '请先保存当前导演指令');
+    throw mcpFailure('unsaved_direction', 'Save the current annotation first');
   }
   if (command.action === 'select_view') {
-    if (!state.available_views.includes(command.view)) throw mcpFailure('unknown_view', '该审片版本不存在');
+    if (!state.available_views.includes(command.view)) throw mcpFailure('unknown_view', 'This review version does not exist');
     if (command.view === currentView) return mcpReviewState();
     if (quickNote) closeQuickNote(false);
     showSegment(command.view, 0, false, true);
@@ -760,7 +931,7 @@ window.productionCanvasMcp = async command => {
     return mcpReviewState();
   }
   if (command.action === 'pause') {
-    if (!await pauseForNote()) throw mcpFailure('pause_failed', '未能确认暂停帧');
+    if (!await pauseForNote()) throw mcpFailure('pause_failed', 'The paused frame could not be confirmed');
     return mcpWaitForFrame(undefined, epoch);
   }
   if (command.action === 'seek_frame' || command.action === 'navigate_shot') {
@@ -769,9 +940,9 @@ window.productionCanvasMcp = async command => {
     const frames = currentView === 'opening' && command.action === 'seek_frame'
       ? Math.round(player.duration * model.fps) : model.frames;
     if (!Number.isSafeInteger(frame) || frame < 0 || frame >= frames) {
-      throw mcpFailure('invalid_frame', '目标帧或镜头不存在');
+      throw mcpFailure('invalid_frame', 'Target frame or shot does not exist');
     }
-    if (command.action === 'navigate_shot' && !shot) throw mcpFailure('unknown_shot', '镜头不存在');
+    if (command.action === 'navigate_shot' && !shot) throw mcpFailure('unknown_shot', 'Shot does not exist');
     if (quickNote) closeQuickNote(false);
     if (currentView === 'opening' && command.action === 'seek_frame') seekLocalFrame(frame, true);
     else seekFrame(frame);
@@ -779,20 +950,20 @@ window.productionCanvasMcp = async command => {
   }
   if (command.action === 'open_direction') {
     if (quickNote && $('inline-note').value.trim() && !quickNoteIsAtCurrentFrame()) {
-      throw mcpFailure('unsaved_direction', '请先处理原帧上的导演草稿');
+      throw mcpFailure('unsaved_direction', 'Resolve the draft on its original frame first');
     }
     await openQuickNote();
-    if (!quickNote) throw mcpFailure('note_not_ready', '导演指令框未能打开');
+    if (!quickNote) throw mcpFailure('note_not_ready', 'The annotation editor could not open');
     return mcpReviewState();
   }
   if (command.action === 'save_direction') {
     if (!/^[a-f0-9]{32}$/.test(command.operation_id || '') || typeof command.text !== 'string' ||
-        !command.text.trim() || command.text.length > 16000) throw mcpFailure('invalid_direction', '指令编号或内容无效');
+        !command.text.trim() || command.text.length > 16000) throw mcpFailure('invalid_direction', 'Invalid annotation ID or text');
     const text = command.text.trim();
     const previous = model.tasks.find(task => task.id === command.operation_id);
     if (previous) {
       if (previous.route !== 'direction' || previous.text !== text || previous.anchor?.revision !== state.revision ||
-          previous.anchor?.version !== state.video_version) throw mcpFailure('operation_conflict', '操作编号已用于另一条指令');
+          previous.anchor?.version !== state.video_version) throw mcpFailure('operation_conflict', 'Operation ID is assigned to another annotation');
       lastSavedDirectionId = previous.id;
       return { ...mcpReviewState(), direction_id: previous.id, direction: previous, idempotent: true };
     }
@@ -800,23 +971,23 @@ window.productionCanvasMcp = async command => {
       $('inline-note').value.trim() === text && quickNoteIsAtCurrentFrame() &&
       quickNote.context.anchor.revision === state.revision && quickNote.context.version === state.video_version;
     if (quickNote?.saving || (quickNote && $('inline-note').value.trim() && !retryDraft)) {
-      throw mcpFailure('unsaved_direction', '请先处理已有导演草稿');
+      throw mcpFailure('unsaved_direction', 'Resolve the existing annotation draft first');
     }
     await openQuickNote();
     mcpCheckIdentity(command);
-    if (epoch !== projectEpoch || !quickNote || !quickNoteIsAtCurrentFrame()) throw mcpFailure('frame_changed', '指令锚点已变化');
+    if (epoch !== projectEpoch || !quickNote || !quickNoteIsAtCurrentFrame()) throw mcpFailure('frame_changed', 'The annotation anchor changed');
     quickNote.id = command.operation_id;
     $('inline-note').value = text;
     const saved = await saveQuickNote();
-    if (!saved) throw mcpFailure('save_failed', '指令未保存');
+    if (!saved) throw mcpFailure('save_failed', 'Annotation was not saved');
     return { ...mcpReviewState(), direction_id: saved.id, direction: saved, idempotent: false };
   }
   const task = model.tasks.find(item => item.id === command.direction_id);
   const location = task && resolveNote(task);
-  if (!location) throw mcpFailure('unresolved_direction', '这条指令无法定位到当前版本');
+  if (!location) throw mcpFailure('unresolved_direction', 'This annotation cannot be located in the current version');
   if (quickNote) closeQuickNote(false);
   jumpNote(task);
   return mcpWaitForFrame(location.frame, epoch);
 };
 
-document.addEventListener('DOMContentLoaded', () => boot().catch(error => tell(error.message, true)));
+document.addEventListener('DOMContentLoaded', () => boot(params.get('view')).catch(error => tell(error.message, true)));

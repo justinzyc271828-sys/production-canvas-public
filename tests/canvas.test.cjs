@@ -32,7 +32,7 @@ test('generic API returns project tracks, labels, editorial rows and waveform so
   assert.equal(value.generic, true);
   assert.equal(value.frames, 720);
   assert.equal(value.focus.start, 264);
-  assert.equal(value.viewLabels.battle, '短镜头练习');
+  assert.equal(value.viewLabels.battle, 'Short-shot practice');
   assert.equal(value.tracks[0].clips[5].shot, 'S06');
   assert.equal(value.tracks[0].clips[5].placeholder, true);
   assert.ok(value.tracks[0].clips[5].thumbnail);
@@ -47,7 +47,7 @@ test('directions persist once and conflicting retries do not overwrite the brief
   assert.equal((await call('/tasks', brief)).value.id, brief.id);
   const file = path.join(root, '.production-canvas/tasks', brief.id, 'brief.json');
   const before = fs.readFileSync(file);
-  await assert.rejects(call('/tasks', { ...brief, text: 'A conflicting retry' }), /编号/);
+  await assert.rejects(call('/tasks', { ...brief, text: 'A conflicting retry' }), /ID/);
   assert.deepEqual(fs.readFileSync(file), before);
   assert.equal((await call()).value.tasks[0].anchor.frame, 302);
 });
@@ -58,7 +58,7 @@ test('legacy anchors load and malformed new anchor fields are rejected', async t
   brief.anchor.clip = { track: 0, bin: '6', sourceFrame: 302 };
   assert.equal((await call('/tasks', brief)).value.anchor.clip.sourceFrame, 302);
   const malformed = { ...brief, id: 'b'.repeat(32), anchor: { ...brief.anchor, clip: { ...brief.anchor.clip, offset: -1 } } };
-  await assert.rejects(call('/tasks', malformed), /锚点/);
+  await assert.rejects(call('/tasks', malformed), /anchor/);
 });
 
 test('candidate files remain hash-bound and separate from the original brief', async t => {
@@ -70,7 +70,7 @@ test('candidate files remain hash-bound and separate from the original brief', a
   const result = await call('/tasks/' + brief.id + '/result', { path: 'candidate.md', sha256, note: 'For review' });
   assert.equal(result.value.result.status, 'candidate');
   fs.writeFileSync(candidate, 'Changed bytes');
-  await assert.rejects(call('/media/task-' + brief.id), /结果已变化/);
+  await assert.rejects(call('/media/task-' + brief.id), /Result changed/);
 });
 
 test('placeholder review decisions persist in generic projects', async t => {
@@ -78,14 +78,14 @@ test('placeholder review decisions persist in generic projects', async t => {
   const summary = (await call()).value;
   await call('/review-decisions', { revision: summary.revision, track: 0, clip: 5, state: 'pass' });
   assert.equal((await call()).value.decisions['0:5'], 'pass');
-  await assert.rejects(call('/review-decisions', { revision: 'wrong', track: 0, clip: 5, state: 'pass' }), /版本/);
+  await assert.rejects(call('/review-decisions', { revision: 'wrong', track: 0, clip: 5, state: 'pass' }), /revision/);
 });
 
 test('native projects reject rendering mutations and nonlocal hosts', async t => {
   fixture(t);
   const summary = (await call()).value;
-  await assert.rejects(call('/edits', { revision: summary.revision, track: 0, clip: 0, operation: 'trim', start: 0, end: 20 }), /原生/);
-  await assert.rejects(call('', undefined, 'example.com'), /本机/);
+  await assert.rejects(call('/edits', { revision: summary.revision, track: 0, clip: 0, operation: 'trim', start: 0, end: 20 }), /Native/);
+  await assert.rejects(call('', undefined, 'example.com'), /local/);
 });
 
 test('a final mix is not displayed as the waveform of separate audio sources', async t => {

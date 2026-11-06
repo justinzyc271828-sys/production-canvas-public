@@ -8,9 +8,10 @@ const { randomBytes } = require('node:crypto');
 const { buildCommit = null } = require('../package.json');
 const canvas = require('./canvas');
 const { createBridge } = require('./mcp-bridge');
-const { loadProject, schema: projectSchema } = require('./project');
+const { loadProject, videoArgument, findVideoProject, schema: projectSchema } = require('./project');
 
 app.setName('Production Canvas');
+app.commandLine.appendSwitch('lang', 'en-US');
 const argument = name => process.argv.find(value => value.startsWith('--' + name + '='))?.split('=').slice(1).join('=');
 const verifyOutput = argument('verify');
 const verifyCapture = argument('capture');
@@ -20,6 +21,8 @@ const profile = argument('profile');
 if (profile) {
   fs.mkdirSync(path.resolve(profile), { recursive: true });
   app.setPath('userData', path.resolve(profile));
+} else {
+  app.setPath('userData', path.join(app.getPath('appData'), 'ProductionCanvasEnglishPreview'));
 }
 const resources = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
 const data = app.getPath('userData');
@@ -56,7 +59,7 @@ function save(file, value) {
 function initializeDemo() {
   const previous = path.join(data, 'sample-project-illustrated');
   if (fs.existsSync(path.join(previous, 'current-manifest.json'))) {
-    settings.projects['demo-v1'] = { title: '旧版示例与指令', root: previous, manifest: 'current-manifest.json', demo: true };
+    settings.projects['demo-v1'] = { title: 'Earlier sample and annotations', root: previous, manifest: 'current-manifest.json', demo: true };
   }
   const root = path.join(data, 'sample-project-v2');
   if (!fs.existsSync(path.join(root, 'project.json'))) {
@@ -64,11 +67,11 @@ function initializeDemo() {
     fs.cpSync(path.join(resources, 'demo'), stage, { recursive: true });
     fs.renameSync(stage, root);
   }
-  return { title: '示例影片 · 审片练习', root, manifest: 'project.json', demo: true };
+  return { title: 'Frame Annotation Lab', root, manifest: 'project.json', demo: true };
 }
 
 function validateBinding(id, binding) {
-  if (!/^[a-z0-9][a-z0-9-]{1,39}$/.test(id) || id === 'demo') throw new Error('项目 ID 无效');
+  if (!/^[a-z0-9][a-z0-9-]{1,39}$/.test(id) || id === 'demo') throw new Error('Invalid project ID');
   const loaded = loadProject(binding);
   return { title: loaded.title, root: loaded.dir, manifest: loaded.manifestName };
 }
@@ -126,11 +129,11 @@ async function readBody(req) {
   const buffers = [];
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > 1024 * 1024) throw Object.assign(new Error('请求超过 1 MB'), { status: 413 });
+    if (length > 1024 * 1024) throw Object.assign(new Error('Request exceeds 1 MB'), { status: 413 });
     buffers.push(chunk);
   }
   const value = JSON.parse(Buffer.concat(buffers).toString('utf8') || '{}');
-  if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('需要 JSON 对象');
+  if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Expected a JSON object');
   return value;
 }
 
@@ -140,12 +143,27 @@ async function startServer() {
       const url = new URL(req.url, origin);
       if (mcpBridge && await mcpBridge.handle(req, res, url, reply, readBody)) return;
       if (req.headers['x-canvas-desktop'] !== appToken || req.headers.host !== new URL(origin).host) {
-        return reply(res, 403, { error: '仅桌面应用会话可访问' });
+        return reply(res, 403, { error: 'Access requires a desktop application session' });
       }
-      if (url.origin !== origin) return reply(res, 403, { error: '未知的本地地址' });
+      if (url.origin !== origin) return reply(res, 403, { error: 'Unknown local address' });
       if (url.pathname === '/desktop/project-menu' && req.method === 'POST' && req.headers.origin === origin) {
         Menu.getApplicationMenu()?.items[0]?.submenu?.popup({ window: mainWindow });
         return reply(res, 200, { open: true });
+      }
+      if (url.pathname === '/desktop/review-selection' && req.method === 'POST' && req.headers.origin === origin) {
+        const { project, view } = await readBody(req);
+        if (typeof project !== 'string' || (project !== 'demo' && !Object.hasOwn(settings.projects, project)) ||
+            !['s03', 'opening', 'battle'].includes(view)) {
+          return reply(res, 400, { error: 'Invalid review project or version' });
+        }
+        const state = await mainWindow.webContents.executeJavaScript('mcpReviewState()');
+        if (state.project_id !== project || state.current_view !== view) return reply(res, 200, { saved: false });
+        if (settings.active !== project || settings.review?.project !== project || settings.review?.view !== view) {
+          settings.active = project;
+          settings.review = { project, view };
+          save(settingsPath, settings);
+        }
+        return reply(res, 200, { saved: true });
       }
       if (url.pathname === '/desktop/comfy' && req.method === 'POST' && req.headers.origin === origin) {
         const { project, node } = await readBody(req);
@@ -154,7 +172,7 @@ async function startServer() {
       if (url.pathname.startsWith('/api/canvas/')) return await canvas.handle(req, res, url, reply, readBody);
       const file = url.pathname === '/canvas/' ? 'index.html' : url.pathname.slice('/canvas/'.length);
       if (!url.pathname.startsWith('/canvas/') || !Object.hasOwn(mime, file) || req.method !== 'GET') {
-        return reply(res, 404, { error: '找不到页面' });
+        return reply(res, 404, { error: 'Page not found' });
       }
       const body = fs.readFileSync(path.join(__dirname, 'public', file));
       res.writeHead(200, { 'Content-Type': mime[file], 'Content-Length': body.length,
@@ -228,13 +246,13 @@ async function showComfy(id, node) {
   const record = canvas.comfyWorkflow(id);
   const url = comfyOrigin + '/api/userdata/' + encodeURIComponent('workflows/' + record.filename);
   const response = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' }).catch(() => {
-    throw new Error('本机 ComfyUI 未连接。请启动 ComfyUI 后重试。');
+    throw new Error('Local ComfyUI is unavailable. Start it and try again.');
   });
-  if (!response.ok) throw new Error('ComfyUI 中找不到此项目的画布');
+  if (!response.ok) throw new Error('The project workspace was not found in ComfyUI');
   const graph = await response.json().catch(() => {
-    throw new Error('本机 ComfyUI 未能读取工作流文件，请检查服务后重试。');
+    throw new Error('Local ComfyUI could not read the workflow. Check the service and try again.');
   });
-  if (graph.id !== record.id || !Array.isArray(graph.nodes)) throw new Error('ComfyUI 画布身份与项目清单不一致');
+  if (graph.id !== record.id || !Array.isArray(graph.nodes)) throw new Error('The ComfyUI workspace does not match the project manifest');
 
   if (comfyView) {
     mainWindow.contentView.removeChildView(comfyView);
@@ -281,13 +299,13 @@ async function showComfy(id, node) {
         await wait();
       }
       if (!app?.canvas || document.getElementById('splash-loader')?.getClientRects().length) {
-        throw Error('ComfyUI 画布加载超时');
+        throw Error('ComfyUI workspace load timed out');
       }
       const graph = ${JSON.stringify(graph)};
       await app.loadGraphData(graph);
       return { id: app.rootGraph.id, nodes: app.rootGraph._nodes.length };
     })()`);
-    if (loaded.id !== record.id || loaded.nodes !== graph.nodes.length) throw new Error('ComfyUI 节点加载结果与保存工程不符');
+    if (loaded.id !== record.id || loaded.nodes !== graph.nodes.length) throw new Error('Loaded ComfyUI nodes do not match the saved project');
     await centerComfyNode(view, node);
     comfyProject = id;
     view.setVisible(true);
@@ -301,10 +319,26 @@ async function showComfy(id, node) {
   }
 }
 
-async function showProject() {
+async function selectVideo(file, demo) {
+  const projects = { ...settings.projects, demo };
+  const registered = Object.entries(projects).sort(([a], [b]) =>
+    Number(b === settings.active) - Number(a === settings.active));
+  const target = findVideoProject(file, registered);
+  if (mainWindow && await mainWindow.webContents.executeJavaScript(
+    'typeof mcpReviewState === "function" && mcpReviewState().unsaved_direction'
+  )) throw new Error('Save or discard the current annotation before reopening the video.');
+  const id = target.id ?? 'local-' + randomBytes(4).toString('hex');
+  if (!target.id) settings.projects[id] = target.binding;
+  settings.active = id;
+  return target.view;
+}
+
+async function showProject(view) {
   comfyView?.setVisible(false);
-  const url = origin + '/canvas/?project=' + encodeURIComponent(settings.active || 'demo');
-  await mainWindow.loadURL(url);
+  const query = new URLSearchParams({ project: settings.active || 'demo' });
+  if (!view && settings.review?.project === settings.active) view = settings.review.view;
+  if (view) query.set('view', view);
+  await mainWindow.loadURL(origin + '/canvas/?' + query);
 }
 
 function makeMenu(demo) {
@@ -312,27 +346,34 @@ function makeMenu(demo) {
     try {
       const pick = await dialog.showOpenDialog(mainWindow, options);
       if (pick.canceled) return;
-      apply(pick.filePaths[0]);
+      const view = await apply(pick.filePaths[0]);
       applySettings(demo);
-      await showProject();
+      await showProject(view);
     } catch (error) {
-      dialog.showErrorBox('无法接入', error.message);
+      dialog.showErrorBox('Unable to open project', error.message);
     }
   };
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: '项目', submenu: [
-      { label: '打开示例', click: () => { settings.active = 'demo'; applySettings(demo); void showProject(); } },
-      { label: '接入本地影片目录…', click: withPicker({ properties: ['openDirectory'] }, root => {
+    { label: 'Project', submenu: [
+      { label: 'Open sample', click: () => { settings.active = 'demo'; applySettings(demo); void showProject(); } },
+      { label: 'Open review video...', click: withPicker({ properties: ['openFile'], filters: [{ name: 'Review video', extensions: ['mp4'] }] },
+        file => selectVideo(file, demo)) },
+      { label: 'Open local film folder...', click: withPicker({ properties: ['openDirectory'] }, root => {
         const id = 'local-' + randomBytes(4).toString('hex');
         settings.projects[id] = validateBinding(id, { root });
         settings.active = id;
       }) },
-      { label: '打开项目清单…', click: withPicker({ properties: ['openFile'], filters: [{ name: '项目清单', extensions: ['json'] }] }, importWorkbench) },
-      { label: '导入项目与本地工具配置…', click: withPicker({ properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] }, importWorkbench) },
-      { type: 'separator' }, { role: 'quit', label: '退出' }
+      { label: 'Open project manifest...', click: withPicker({ properties: ['openFile'], filters: [{ name: 'Project manifest', extensions: ['json'] }] }, importWorkbench) },
+      { label: 'Import project and local tool settings...', click: withPicker({ properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] }, importWorkbench) },
+      { type: 'separator' }, { role: 'quit', label: 'Quit' }
     ] },
-    { label: '视图', submenu: [{ role: 'reload', label: '刷新画布' }, { role: 'togglefullscreen', label: '全屏' }] },
-    { role: 'editMenu', label: '编辑' }
+    { label: 'View', submenu: [{ role: 'reload', label: 'Reload canvas' }, { role: 'togglefullscreen', label: 'Fullscreen' }] },
+    { label: 'Edit', submenu: [
+      { role: 'undo', label: 'Undo' }, { role: 'redo', label: 'Redo' },
+      { type: 'separator' }, { role: 'cut', label: 'Cut' },
+      { role: 'copy', label: 'Copy' }, { role: 'paste', label: 'Paste' },
+      { role: 'selectAll', label: 'Select all' }
+    ] }
   ]));
 }
 
@@ -416,6 +457,12 @@ async function verify() {
   const outside = await fetch(origin + '/api/canvas/projects');
   assert(outside.status === 403, 'Desktop session gate failed');
   const checkpoints = {};
+  checkpoints.englishInterface = await evaluate(() => {
+    const text = [document.body.textContent, ...[...document.querySelectorAll('*')].flatMap(node =>
+      ['title', 'aria-label', 'placeholder'].map(name => node.getAttribute(name) || ''))].join('\n');
+    return document.documentElement.lang === 'en' && !/[\u3400-\u9fff]/u.test(text);
+  });
+  assert(checkpoints.englishInterface, 'The English sample contains non-English interface text');
   const play = await evaluate(async () => {
     const before = player.currentTime;
     $('play-toggle').click();
@@ -466,20 +513,44 @@ async function verify() {
         const previous = new Set(model.tasks.map(task => task.id));
         const listBefore = previous.size;
         const form = $('quick-note');
-        $('inline-note').value = 'isolated verification';
+        const noteText = ('isolated verification ' + 'This complete annotation must stay compact and must not obscure the timeline. '.repeat(8)).trim();
+        $('inline-note').value = noteText;
         form.requestSubmit(form.querySelector('button[type=submit]'));
         for (let i = 0; i < 100 && model.tasks.length === listBefore; i++) await new Promise(resolve => setTimeout(resolve, 50));
-        const note = model.tasks.find(task => !previous.has(task.id) && task.title === 'isolated verification');
+        const note = model.tasks.find(task => !previous.has(task.id) && task.text === noteText);
         if (!note) throw Error('Note failed to save');
         const saved = await request(api('/tasks/' + note.id));
         checks.persisted = saved.anchor.frame === window.qaShortFrame && saved.anchor.view === 's03' && saved.anchor.version === versionName();
-        checks.timelineMarker = Boolean($('review-rows').querySelector('[data-note="' + saved.id + '"]'));
+        const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator.clipboard, 'writeText');
+        let copiedHandoff = '';
+        try {
+          Object.defineProperty(navigator.clipboard, 'writeText', {
+            configurable: true, value: async text => { copiedHandoff = text; }
+          });
+          renderTasks();
+          [...document.querySelectorAll('#tasks [data-task="' + saved.id + '"] button')]
+            .find(button => button.textContent === 'Copy for Codex').click();
+          await Promise.resolve();
+          checks.codexHandoff = copiedHandoff.includes(saved.text) &&
+            copiedHandoff.includes(JSON.stringify(saved.anchor, null, 2)) &&
+            copiedHandoff.includes('Current resolved location');
+        } finally {
+          if (clipboardDescriptor) Object.defineProperty(navigator.clipboard, 'writeText', clipboardDescriptor);
+          else delete navigator.clipboard.writeText;
+        }
+        const marker = $('review-rows').querySelector('[data-note="' + saved.id + '"]');
+        checks.timelineMarker = Boolean(marker);
+        checks.compactMarker = /^\d+$/.test(marker?.textContent || '') && marker.textContent === marker.dataset.number &&
+          marker.getBoundingClientRect().width <= 36;
+        checks.matchingNumber = document.querySelector('#inspector [data-note="' + saved.id + '"] .note-number')?.textContent === marker.textContent;
+        checks.originalTextPreserved = saved.text === noteText;
         seekFrame(window.qaShortFrame + 2);
         jumpNote(saved);
         for (let i = 0; i < 100 && (videoClock.pending || playFrame() !== window.qaShortFrame); i++) {
           await new Promise(resolve => setTimeout(resolve, 25));
         }
         checks.jump = !videoClock.pending && playFrame() === window.qaShortFrame;
+        checks.highlightedMarker = document.querySelector('.note-mark[data-note="' + saved.id + '"]')?.getAttribute('aria-current') === 'true';
         // Exercise the replacement against an isolated model without editing the fixture on disk.
         const original = model;
         try {
@@ -515,10 +586,52 @@ async function verify() {
           renderInspector();
           renderTimeline();
         }
+        const previousRange = { ...range };
+        try {
+          model = structuredClone(original);
+          const adjacent = structuredClone(saved);
+          adjacent.id = 'f'.repeat(32);
+          adjacent.anchor.frame += 1;
+          if (adjacent.anchor.clip) {
+            adjacent.anchor.clip.sourceFrame += 1;
+            adjacent.anchor.clip.offset += 1;
+          }
+          model.tasks = [saved, adjacent];
+          renderInspector();
+          setRange(window.qaShortFrame - 10, laneWidth() / 20, 'custom', 1);
+          let group = document.querySelector('.note-cluster');
+          checks.compactCluster = group?.querySelector('.cluster-button').textContent === '2 notes' &&
+            getComputedStyle(group.querySelector('.cluster-menu')).position === 'fixed';
+          group.querySelector('[data-note="' + adjacent.id + '"]').click();
+          for (let i = 0; i < 100 && (videoClock.pending || playFrame() !== adjacent.anchor.frame); i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          checks.clusterJump = playFrame() === adjacent.anchor.frame;
+          group = document.querySelector('.note-cluster');
+          group.querySelector('.cluster-button').click();
+          const markers = [...document.querySelectorAll('.note-mark')];
+          checks.expandedMarkers = markers.length === 2 &&
+            markers.every(mark => /^\d+$/.test(mark.textContent) && mark.textContent === mark.dataset.number &&
+              mark.getBoundingClientRect().width <= 36);
+          checks.highlightedAdjacent = document.querySelector('.note-mark[data-note="' + adjacent.id + '"]')?.getAttribute('aria-current') === 'true';
+          const lane = document.querySelector('.notes-row .lane').getBoundingClientRect();
+          checks.markersAligned = markers.every(mark => {
+            const noteFrame = mark.dataset.note === saved.id ? saved.anchor.frame : adjacent.anchor.frame;
+            const box = mark.getBoundingClientRect();
+            return Math.abs(box.x + box.width / 2 - (lane.x + (noteFrame - range.start) * lane.width / range.span)) < 1;
+          });
+        } finally {
+          model = original;
+          range = previousRange;
+          seekFrame(window.qaShortFrame);
+          renderInspector();
+          renderTimeline();
+        }
       } else closeQuickNote();
       return checks;
     }, verifyWrite);
     assert(Object.values(checkpoints.note).every(Boolean), 'Director note check failed');
+    await capture('compact-notes', Boolean(captureDir));
     if (verifyWrite) {
       mainWindow.focus();
       contents.focus();
@@ -629,6 +742,59 @@ async function verify() {
   assert(checkpoints.height.collapsed === 136 && Math.abs(checkpoints.height.expanded - 456) <= 1, 'Timeline height modes failed');
   assert(checkpoints.height.tracks === layout.tracks.length, 'Expanded timeline lost tracks');
   if (captureDir) await capture('expanded', true);
+  if (await evaluate(() => model.demo && model.generic)) {
+    checkpoints.thumbnailPixels = await evaluate(async () => {
+      window.thumbnailQaRange = { ...range };
+      setRange(480, 160);
+      const inspect = async mode => {
+        setHeight(mode);
+        let thumb;
+        for (let i = 0; i < 200; i++) {
+          thumb = document.querySelector('[data-shot="S13"] canvas.clip-thumbnail');
+          if (thumb?.dataset.frame) break;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        if (!thumb?.dataset.frame) throw Error('S13 thumbnail did not render');
+        const bounds = thumb.getBoundingClientRect();
+        const expectedWidth = Math.min(model.video.width, Math.ceil(bounds.width * devicePixelRatio));
+        const expectedHeight = Math.min(model.video.height, Math.ceil(bounds.height * devicePixelRatio));
+        if (thumb.width < expectedWidth - 1 || thumb.height < expectedHeight - 1) {
+          throw Error('Thumbnail is being enlarged from too few pixels');
+        }
+        const original = await thumbnailAt(Number(thumb.dataset.frame), model.video.width, model.video.height);
+        if (!original) throw Error('Full-resolution frame is unavailable');
+        const reference = document.createElement('canvas');
+        reference.width = thumb.width;
+        reference.height = thumb.height;
+        const context = reference.getContext('2d');
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(original, 0, 0, reference.width, reference.height);
+        const wanted = context.getImageData(0, 0, reference.width, reference.height).data;
+        const actual = thumb.getContext('2d').getImageData(0, 0, thumb.width, thumb.height).data;
+        let pictureFrame = 0;
+        for (let bit = 0; bit < 10; bit++) {
+          const x = Math.floor((34 + bit * 16) * thumb.width / model.video.width);
+          const y = Math.floor(286 * thumb.height / model.video.height);
+          if (actual[(y * thumb.width + x) * 4] > 128) pictureFrame += 2 ** bit;
+        }
+        if (pictureFrame !== Number(thumb.dataset.frame)) throw Error('Thumbnail contains the wrong picture frame');
+        let difference = 0;
+        for (let i = 0; i < actual.length; i++) difference += Math.abs(actual[i] - wanted[i]);
+        const meanDifference = difference / actual.length;
+        if (meanDifference > 1) throw Error('Thumbnail differs from the native-resolution frame: ' +
+          JSON.stringify({ mode, frame: thumb.dataset.frame, width: thumb.width, height: thumb.height, meanDifference }));
+        return { mode, frame: Number(thumb.dataset.frame), pictureFrame, width: thumb.width, height: thumb.height,
+          displayWidth: bounds.width, displayHeight: bounds.height, meanDifference };
+      };
+      const standard = await inspect('standard');
+      const expanded = await inspect('expanded');
+      if (expanded.width <= standard.width) throw Error('Expanded timeline reused a smaller thumbnail');
+      await thumbnailQueue;
+      return { devicePixelRatio, standard, expanded };
+    });
+    await capture('thumbnail-detail', Boolean(captureDir));
+    await evaluate(() => { range = window.thumbnailQaRange; delete window.thumbnailQaRange; renderTimeline(); });
+  }
   checkpoints.narrowSizes = [];
   for (const width of [1024, 1179]) {
     mainWindow.setContentSize(width - 1, width === 1024 ? 699 : 799);
@@ -708,23 +874,78 @@ async function verify() {
       return { scanned: model.frames, randomPauses: 30, source: 'decoded picture barcode' };
     });
   }
+  if (verifyWrite && settings.projects['sample-alternate']) {
+    checkpoints.projectSelection = await evaluate(async () => {
+      const original = project;
+      const until = async predicate => {
+        for (let i = 0; i < 160; i++) {
+          if (predicate()) return;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw Error('Project selection did not settle');
+      };
+      const select = id => {
+        $('project').value = id;
+        $('project').dispatchEvent(new Event('change'));
+      };
+      $('brief').reset();
+      await openQuickNote();
+      $('inline-note').value = 'Unsaved direction must stay here';
+      select('sample-alternate');
+      const draftPreserved = project === original && $('project').value === original &&
+        $('inline-note').value === 'Unsaved direction must stay here';
+      closeQuickNote();
+      select('sample-alternate');
+      await until(() => project === 'sample-alternate' && mcpReviewState().ready);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return { original, draftPreserved, switched: project, view: currentView };
+    });
+    assert(checkpoints.projectSelection.draftPreserved &&
+      settings.active === 'sample-alternate' && settings.review?.project === 'sample-alternate',
+    'Project selection failed to preserve the draft or persist its identity');
+    const missing = await evaluate(async original => {
+      const before = { project, model: model.project, source: player.src };
+      let rejected = false;
+      try { await boot(undefined, 'missing-project-for-verification', null); }
+      catch { rejected = true; }
+      const preserved = before.project === project && before.model === model.project && before.source === player.src;
+      $('project').value = original;
+      $('project').dispatchEvent(new Event('change'));
+      for (let i = 0; i < 160 && (project !== original || !mcpReviewState().ready); i++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      return rejected && preserved && project === original;
+    }, checkpoints.projectSelection.original);
+    assert(missing, 'An unknown project silently selected another film');
+    checkpoints.projectSelection.unknownProjectRejected = missing;
+  }
   save(path.resolve(verifyOutput), { packaged: app.isPackaged, version: app.getVersion(), buildCommit, active: settings.active,
     localSessionGate: 'passed', layout, checkpoints, captureModes });
   app.quit();
 }
 
-app.whenReady().then(async () => {
+const launchFiles = process.argv.slice(app.isPackaged ? 1 : 2);
+const firstInstance = app.requestSingleInstanceLock({ files: launchFiles });
+if (!firstInstance) app.quit();
+const started = firstInstance && app.whenReady().then(async () => {
   fs.mkdirSync(data, { recursive: true });
   settings = fs.existsSync(settingsPath) ? read(settingsPath) : { projects: {}, tools: {}, active: 'demo' };
   const imported = argument('import-workbench');
   if (imported) importWorkbench(imported);
   if (!Object.hasOwn(settings.projects, settings.active)) settings.active = 'demo';
   const demo = initializeDemo();
+  const launchVideo = videoArgument(launchFiles, process.cwd());
+  const view = launchVideo ? await selectVideo(launchVideo, demo) : undefined;
   applySettings(demo);
   await startServer();
   const browserSession = session.fromPartition('production-canvas');
-  browserSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
-  browserSession.setPermissionCheckHandler((_contents, permission) => permission === 'clipboard-sanitized-write');
+  const allowReviewFullscreen = (contents, permission, details) => permission === 'fullscreen' &&
+    contents === mainWindow?.webContents && details.isMainFrame && details.requestingUrl?.startsWith(origin + '/canvas/');
+  browserSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(permission === 'clipboard-sanitized-write' || Boolean(allowReviewFullscreen(contents, permission, details)));
+  });
+  browserSession.setPermissionCheckHandler((contents, permission, _requestingOrigin, details) =>
+    permission === 'clipboard-sanitized-write' || Boolean(allowReviewFullscreen(contents, permission, details)));
   browserSession.webRequest.onBeforeSendHeaders({ urls: ['http://127.0.0.1/*'] }, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     if (new URL(details.url).origin === origin) requestHeaders['X-Canvas-Desktop'] = appToken;
@@ -745,7 +966,7 @@ app.whenReady().then(async () => {
   mainWindow.webContents.on('did-create-window', child => protect(child.webContents));
   if (!verifyOutput) mainWindow.once('ready-to-show', () => mainWindow.show());
   makeMenu(demo);
-  await showProject();
+  await showProject(view);
   mcpBridge = createBridge({
     origin, profile: data, version: app.getVersion(), buildCommit,
     registry: process.env.PRODUCTION_CANVAS_MCP_REGISTRY || path.join(app.getPath('appData'), 'ProductionCanvas', 'mcp-sessions'),
@@ -770,14 +991,31 @@ app.whenReady().then(async () => {
     console.warn('Production Canvas MCP discovery unavailable: ' + error.message);
   }
   if (verifyOutput) await verify();
+  return demo;
 }).catch(error => {
   if (verifyOutput) {
     save(path.resolve(verifyOutput), { error: error.message, buildCommit });
     app.exit(1);
   } else {
-    dialog.showErrorBox('制作画布无法启动', error.message);
+    dialog.showErrorBox('Production Canvas could not start', error.message);
     app.quit();
   }
+});
+
+let videoOpens = Promise.resolve();
+app.on('second-instance', (_event, _argv, cwd, { files = [] }) => {
+  videoOpens = videoOpens.then(async () => {
+    const demo = await started;
+    if (!demo || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    const video = videoArgument(files, cwd);
+    if (!video) return;
+    const view = await selectVideo(video, demo);
+    applySettings(demo);
+    await showProject(view);
+  }).catch(error => dialog.showErrorBox('Unable to open review video', error.message));
 });
 
 app.on('window-all-closed', () => app.quit());

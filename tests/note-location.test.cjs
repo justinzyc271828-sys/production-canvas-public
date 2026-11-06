@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveNoteLocation } = require('../app/public/note-location');
+const { resolveNoteLocation, noteShotContext } = require('../app/public/note-location');
 
 function fixture() {
   const clip = { bin: 'source', position: 100, start: 20, end: 40, shot: 'S06' };
@@ -10,6 +10,29 @@ function fixture() {
     clip: { track: 0, bin: 'source', sourceFrame: 27, offset: 7, start: 20, end: 40 } };
   return { model, anchor, clip };
 }
+
+test('direction context distinguishes real cuts and editorial shot boundaries on the anchored track', () => {
+  const { model, anchor } = fixture();
+  const track = model.tracks[0];
+  track.clips = [
+    { index: 0, position: 80, start: 0, end: 15, shot: 'S05' },
+    { index: 1, position: 100, start: 20, end: 40, shot: 'S06' },
+    { index: 2, position: 120, start: 0, end: 10, shot: 'S07' }
+  ];
+  model.tracks.unshift({ id: 3, type: 'video', clips: [{ index: 0, position: 0, start: 0, end: 200 }] });
+  model.reviewData = { shots: [{ frame: 112, title: 'S06b' }] };
+  const first = noteShotContext(model, anchor, 107);
+  assert.equal(first.current.id, 'S06');
+  assert.equal(first.previous.end - 1, 94);
+  assert.equal(first.next.start, 112);
+  assert.equal(first.next.source, 'shot_marker');
+  const second = noteShotContext(model, anchor, 115);
+  assert.equal(second.current.id, 'S06b');
+  assert.equal(second.previous.end - 1, 111);
+  assert.equal(second.next.id, 'S07');
+  assert.equal(second.next.source, 'picture_clip');
+  assert.equal(noteShotContext(model, anchor, 200), null);
+});
 
 test('current-revision and pre-offset notes retain their frame', () => {
   const { model, anchor } = fixture();
