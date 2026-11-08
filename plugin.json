@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "production-canvas",
-  "version": "0.3.0-rc.1",
+  "version": "0.3.0-rc.2",
   "description": "Frame-linked annotations and surrounding visual context that help Codex understand author intent while creating and revising video.",
   "author": {
     "name": "Production Canvas"

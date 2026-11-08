@@ -1,6 +1,6 @@
 {
   "name": "production-canvas-desktop",
-  "version": "1.6.0-rc.1",
+  "version": "1.6.0-rc.2",
   "description": "Frame-linked annotations and visual context for native Codex collaboration on video.",
   "author": "Justin Yao",
   "private": true,

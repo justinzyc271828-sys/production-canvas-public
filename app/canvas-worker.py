@@ -25,11 +25,11 @@ def digest(path):
 
 async def call(session, name, args=None):
     result = await session.call_tool(name, args or {})
-    if result.isError:
+    response = result.model_dump(by_alias=True)
+    if response.get("isError"):
         raise RuntimeError(" ".join(part.text for part in result.content if part.type == "text"))
-    if result.structuredContent:
-        value = result.structuredContent
-    else:
+    value = response.get("structuredContent")
+    if not value:
         value = json.loads(next(part.text for part in result.content if part.type == "text"))
     if isinstance(value.get("result"), dict) and len(value) == 1:
         value = value["result"]

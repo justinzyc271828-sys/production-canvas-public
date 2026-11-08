@@ -3,7 +3,10 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
@@ -60,7 +63,6 @@ fn restrict_comfy(
     core: &ICoreWebView2,
     environment: ICoreWebView2Environment,
     url: &Url,
-    pipe: Pipe,
     review: WebviewWindow,
 ) -> windows::core::Result<()> {
     let allowed = url.origin().ascii_serialization();
@@ -109,14 +111,6 @@ fn restrict_comfy(
             if let Ok(message) = serde_json::from_str::<Value>(&take_pwstr(data)) {
                 if message["returnReview"] == true {
                     let _ = review.eval("document.querySelector('#return-review').click()");
-                } else if let Some(id) = message["id"].as_str() {
-                    if id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                        let result = match message["error"].as_str() {
-                            Some(error) => Err(error.to_owned()),
-                            None => Ok(message["value"].clone()),
-                        };
-                        pipe.reply(id, result);
-                    }
                 }
             }
         }
@@ -136,6 +130,36 @@ fn restrict_comfy(
     Ok(())
 }
 
+fn wait_for_inspection(
+    view: &Webview,
+    query: &str,
+    started: mpsc::Receiver<String>,
+) -> std::result::Result<Value, String> {
+    let timeout = Duration::from_secs(3);
+    if started.recv_timeout(timeout).as_deref() != Ok("true") {
+        return Err("The ComfyUI view did not start inspection code".to_owned());
+    }
+    let deadline = Instant::now() + Duration::from_secs(29);
+    while Instant::now() < deadline {
+        let (send, response) = mpsc::channel();
+        view.eval_with_callback(query, move |value| {
+            let _ = send.send(value);
+        })
+        .map_err(|error| error.to_string())?;
+        let json = response
+            .recv_timeout(timeout)
+            .map_err(|_| "The ComfyUI view stopped responding".to_owned())?;
+        let result = serde_json::from_str::<Value>(&json).map_err(|error| error.to_string())?;
+        if let Some(error) = result["error"].as_str() {
+            return Err(error.to_owned());
+        }
+        if let Some(value) = result.get("value") {
+            return Ok(value.clone());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err("ComfyUI workspace inspection did not complete".to_owned())
+}
 pub struct Surfaces {
     review: WebviewWindow,
     pipe: Pipe,
@@ -210,7 +234,7 @@ impl Surfaces {
         let (reply, request, review) = (self.pipe.clone(), id.to_owned(), self.review.clone());
         view.with_webview(move |native| {
             let result = unsafe { native.controller().CoreWebView2() }.and_then(|core| {
-                restrict_comfy(&core, native.environment(), &target, reply.clone(), review)?;
+                restrict_comfy(&core, native.environment(), &target, review)?;
                 unsafe { core.Navigate(&HSTRING::from(target.as_str())) }
             });
             if let Err(error) = result {
@@ -222,19 +246,44 @@ impl Surfaces {
     }
 
     pub fn evaluate_comfy(&self, id: &str, source: &str) -> Result<()> {
-        let view = self.comfy.as_ref().ok_or("ComfyUI inspection is closed")?;
-        let id = json!(id);
-        view.eval(format!(
-            r#"(async () => {{
-            const reply = {{ id: {id} }};
-            try {{ reply.value = await ({source}); }}
-            catch (error) {{ reply.error = error.message || String(error); }}
-            window.chrome.webview.postMessage(reply);
+        let view = self
+            .comfy
+            .as_ref()
+            .ok_or("ComfyUI inspection is closed")?
+            .clone();
+        let key = json!(format!("__canvasInspection_{id}"));
+        let script = format!(
+            r#"(() => {{
+            void (async () => {{
+                try {{
+                    const value = await ({source});
+                    globalThis[{key}] = {{ value: value ?? null }};
+                }} catch (error) {{
+                    globalThis[{key}] = {{ error: error.message || String(error) }};
+                }}
+            }})();
+            return true;
         }})()"#
-        ))?;
+        );
+        let (acknowledge, started) = mpsc::channel();
+        view.eval_with_callback(script, move |response| {
+            let _ = acknowledge.send(response);
+        })?;
+        let query = format!(
+            r#"(() => {{
+            const result = globalThis[{key}];
+            if (!result) return null;
+            delete globalThis[{key}];
+            return result;
+        }})()"#
+        );
+        let (pipe, id) = (self.pipe.clone(), id.to_owned());
+        thread::spawn(move || {
+            let result = wait_for_inspection(&view, &query, started);
+            pipe.reply(&id, result);
+        });
         Ok(())
     }
-
     pub fn show_comfy(&self, visible: bool) -> Result<()> {
         if let Some(view) = &self.comfy {
             if visible {

@@ -8,8 +8,8 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { launch, command, connect, stop, until, cleanScratch } = require('./desktop-probe.cjs');
 
-const [executable, toolConfig, output = 'release/tauri-integrations.json', fixtureParent = os.tmpdir()] = process.argv.slice(2);
-if (!executable || !toolConfig) throw Error('Usage: verify-tauri-integrations EXE LOCAL_TOOL_CONFIG [OUTPUT_JSON] [KDENLIVE_ALLOWED_DIRECTORY]');
+const [executable, toolConfig, output = 'release/tauri-integrations.json', fixtureParent = os.tmpdir(), workerMode = 'bundled'] = process.argv.slice(2);
+if (!executable || !toolConfig || !['bundled', 'configured'].includes(workerMode)) throw Error('Usage: verify-tauri-integrations EXE LOCAL_TOOL_CONFIG [OUTPUT_JSON] [KDENLIVE_ALLOWED_DIRECTORY] [bundled|configured]');
 const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 const root = fs.mkdtempSync(path.join(fs.realpathSync(fixtureParent), 'canvas-pilot-integrations-'));
@@ -49,7 +49,7 @@ function buildProject(tools) {
   write(manifestPath, manifest);
   write(path.join(project, 'workspace.json'), graph);
   write(path.join(profile, 'canvas-settings.json'), {
-    active: 'fixture', tools: { kdenlive: tools.kdenlive },
+    active: 'fixture', tools: { kdenlive: tools.kdenlive, ...(workerMode === 'configured' ? { python: tools.python } : {}) },
     projects: { fixture: { root: project, manifest: 'project.json' } }
   });
   return { timelinePath, original: hash(timelinePath) };
@@ -59,6 +59,7 @@ async function verify() {
   const sourceConfig = JSON.parse(fs.readFileSync(toolConfig, 'utf8').replace(/^\uFEFF/, ''));
   const tools = sourceConfig.tools || sourceConfig;
   assert.ok(fs.existsSync(tools.kdenlive.command), 'Use a configured local Kdenlive adapter');
+  if (workerMode === 'configured') assert.ok(tools.python && fs.existsSync(tools.python), 'Use a configured Python worker');
   const { timelinePath, original } = buildProject(tools);
   const outside = await serve((_, response) => { recorded.outside++; response.end('unexpected'); });
   const comfy = await serve((request, response) => {
@@ -153,7 +154,7 @@ async function verify() {
     assert.equal(new URL(draft.url).searchParams.get('draft'), queued.id);
     return { localizedWindow: locale.lang, storyboard: true,
       comfy: { readOnlyRequests: true, verifiedNodes: graph.nodes.length, rejectedWriteStatus: 403, returnedToFrame: returned.frame },
-      kdenlive: { worker: 'bundled Python; configured local adapter', verifiedPreviewSha256: receipt.preview_sha256,
+      kdenlive: { worker: workerMode + ' Python with the configured local adapter', verifiedPreviewSha256: receipt.preview_sha256,
         previewBytes: fs.statSync(preview).size, untouchedInputTimeline: true, draftOpened: true } };
   } finally {
     storyboard?.close();

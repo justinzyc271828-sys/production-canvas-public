@@ -187,21 +187,29 @@ function inspectComfy(project, node) {
     if (project !== (await state()).project_id) throw Error(label('The active project changed', '当前项目已变化'));
     const center = centerNodeScript(node);
     if (comfyProject === project) {
-      if (center) await callHost('comfy-evaluate', { script: center });
-      await callHost('comfy-show');
-      return { open: true };
+      try {
+        await callHost('comfy-show');
+        if (center) await callHost('comfy-evaluate', { script: center });
+        return { open: true };
+      } catch (error) {
+        comfyProject = null;
+        await callHost('comfy-close').catch(() => {});
+        throw error;
+      }
     }
     const record = canvas.comfyWorkflow(project);
-    const graph = await readGraph(record, inspectionOrigin);
+    const inspection = await readGraph(record, inspectionOrigin);
+    const { graph } = inspection;
     comfyProject = null;
     try {
       await callHost('comfy-open', { url: inspectionOrigin }, 20000);
-      const loaded = await callHost('comfy-evaluate', { script: loadGraphScript(graph) }, 24000);
+      // The frontend initializes while its WebView is visible.
+      await callHost('comfy-show');
+      const loaded = await callHost('comfy-evaluate', { script: loadGraphScript(graph, inspection) }, 36000);
       if (loaded.id !== record.id || loaded.nodes !== graph.nodes.length) {
         throw Error(label('Loaded ComfyUI nodes do not match the saved project', '加载的 ComfyUI 节点与项目记录不一致'));
       }
       if (center) await callHost('comfy-evaluate', { script: center });
-      await callHost('comfy-show');
       comfyProject = project;
       return { open: true, nodes: loaded.nodes, revision: graph.revision };
     } catch (error) {
@@ -376,7 +384,7 @@ async function start() {
   });
   origin = 'http://127.0.0.1:' + server.address().port;
   const buildFile = path.join(resources, 'build.json');
-  const build = fs.existsSync(buildFile) ? read(buildFile) : { version: '1.6.0-rc.1', commit: null };
+  const build = fs.existsSync(buildFile) ? read(buildFile) : { version: '1.6.0-rc.2', commit: null };
   bridge = createBridge({
     origin, registry, profile, pid: Number(process.env.CANVAS_HOST_PID), version: build.version, buildCommit: build.commit,
     getWindow: () => nativeWindow,

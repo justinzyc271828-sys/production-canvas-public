@@ -1,5 +1,7 @@
 'use strict';
 
+const { createHash } = require('node:crypto');
+
 const comfyOrigin = 'http://127.0.0.1:8188';
 
 async function readGraph(record, origin = comfyOrigin) {
@@ -8,11 +10,12 @@ async function readGraph(record, origin = comfyOrigin) {
     throw new Error('Local ComfyUI is unavailable. Start it and try again.');
   });
   if (!response.ok) throw new Error('The project workspace was not found in ComfyUI');
-  const graph = await response.json().catch(() => {
-    throw new Error('Local ComfyUI could not read the workflow. Check the service and try again.');
-  });
+  const bytes = Buffer.from(await response.arrayBuffer());
+  let graph;
+  try { graph = JSON.parse(new TextDecoder().decode(bytes)); }
+  catch { throw new Error('Local ComfyUI could not read the workflow. Check the service and try again.'); }
   if (graph.id !== record.id || !Array.isArray(graph.nodes)) throw new Error('The ComfyUI workspace does not match the project manifest');
-  return graph;
+  return { graph, path: new URL(url).pathname, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
 function centerNodeScript(node) {
@@ -32,7 +35,18 @@ function centerNodeScript(node) {
   return '(' + source.toString() + ')(' + node + ')';
 }
 
-function loadGraphScript(graph) {
+function loadGraphScript(graph, inspection) {
+  const load = inspection ? `
+    const response = await fetch(${JSON.stringify(inspection.path)}, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw Error('The local ComfyUI workspace could not be reloaded');
+    const bytes = await response.arrayBuffer();
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    const hash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+    if (hash !== ${JSON.stringify(inspection.sha256)}) throw Error('The ComfyUI workspace changed while opening');
+    const graph = JSON.parse(new TextDecoder().decode(bytes));
+    await app.loadGraphData(graph, true, true, null, { skipAssetScans: true, deferWarnings: true });` : `
+    const graph = ${JSON.stringify(graph)};
+    await app.loadGraphData(graph);`;
   return `(async () => {
       const wait = () => new Promise(resolve => setTimeout(resolve, 150));
       const until = Date.now() + 18000;
@@ -46,8 +60,7 @@ function loadGraphScript(graph) {
       if (!app?.canvas || document.getElementById('splash-loader')?.getClientRects().length) {
         throw Error('ComfyUI workspace load timed out');
       }
-      const graph = ${JSON.stringify(graph)};
-      await app.loadGraphData(graph);
+      ${load}
       return { id: app.rootGraph.id, nodes: app.rootGraph._nodes.length };
     })()`;
 }

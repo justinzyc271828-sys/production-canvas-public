@@ -205,7 +205,7 @@ async function showComfy(id, node) {
     return { open: true };
   }
   const record = canvas.comfyWorkflow(id);
-  const graph = await readGraph(record);
+  const { graph } = await readGraph(record);
 
   if (comfyView) {
     mainWindow.contentView.removeChildView(comfyView);

@@ -49,7 +49,9 @@ async def verify(package, profile, powershell, environment):
                 await asyncio.sleep(.3)
             assert session, "The package launcher did not create a ready instance"
             state = session["status"]["state"]
-            assert session["version"] == "1.6.0-rc.1"
+            receipt = json.loads((package / "build-receipt.json").read_text(encoding="utf-8"))
+            assert session["version"] == receipt["version"]
+            assert session["build_commit"] == receipt["commit"]
             assert state["frames"] == 720 and state["fps"] == 24
             guard = {
                 "instance_id": session["instance_id"], "project_id": state["project_id"],
