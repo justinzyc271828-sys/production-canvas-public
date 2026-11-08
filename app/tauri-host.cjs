@@ -384,7 +384,7 @@ async function start() {
   });
   origin = 'http://127.0.0.1:' + server.address().port;
   const buildFile = path.join(resources, 'build.json');
-  const build = fs.existsSync(buildFile) ? read(buildFile) : { version: '1.6.0-rc.2', commit: null };
+  const build = fs.existsSync(buildFile) ? read(buildFile) : { version: '1.6.0', commit: null };
   bridge = createBridge({
     origin, registry, profile, pid: Number(process.env.CANVAS_HOST_PID), version: build.version, buildCommit: build.commit,
     getWindow: () => nativeWindow,

@@ -40,7 +40,7 @@ impl Language {
     }
 
     fn title(self) -> &'static str {
-        self.text("Production Canvas 1.6 Candidate", "制作画布 · 1.6 候选版")
+        self.text("Production Canvas 1.6", "制作画布 · 1.6")
     }
 }
 

@@ -70,8 +70,11 @@ function job(p, id) {
   const { source, scene, edits, ...request } = read(existing(dir, 'request.json'));
   const stateFile = path.join(dir, 'status.json');
   let state = fs.existsSync(stateFile) ? read(existing(dir, 'status.json')) : { status: 'queued', stage: 'start' };
-  if (request.kind === 'edit' && ['running', 'attention'].includes(state.status) && state.job_path) {
-    const receipt = read(existing(dir, state.job_path));
+  const stagedReceipt = 'render-receipt.json';
+  const receiptPath = state.job_path || (fs.existsSync(path.join(dir, stagedReceipt)) &&
+    fs.existsSync(path.join(dir, 'preview.mp4')) ? stagedReceipt : null);
+  if (request.kind === 'edit' && ['running', 'attention'].includes(state.status) && receiptPath) {
+    const receipt = read(existing(dir, receiptPath));
     if (receipt.state === 'completed' && receipt.full_decode === 'passed') {
       const preview = existing(dir, 'preview.mp4');
       const draft = existing(dir, 'draft.kdenlive-cli.json');
@@ -167,6 +170,7 @@ async function summary(p, draft) {
     { key: 'sound', title: 'S03 source mix', type: 'audio', url: base + 'sound' }
   ];
   const film = p.review?.video || p.battle?.current_candidate || s03.preview;
+  const video = await videoInfo(film, p.dir);
   const short = p.battle?.short_review;
   const interval = short?.original_interval_seconds;
   let focus = Array.isArray(interval) && interval.length === 2 &&
@@ -186,7 +190,7 @@ async function summary(p, draft) {
     if (saved.id !== p.review.comfy.canvas_id || !Array.isArray(saved.nodes)) throw problem(422, 'Invalid project workspace identity');
     graph = { ...p.review.comfy, revision: saved.revision, nodes: saved.nodes.length };
   }
-  const annotations = draft ? { data: null } : readReview(p, t);
+  const annotations = draft ? { data: null } : readReview(p, t, video.actualSha256);
   if (p.battle) {
     for (const track of t.tracks) for (const clip of track.clips) {
       const shot = clip.name.match(/^([0-9]+[a-z-]*)[｜|]/)?.[1];
@@ -213,7 +217,7 @@ async function summary(p, draft) {
       approved: opening.status === 'OWNER_APPROVED_FINAL', url: base + 'opening' } : null,
     segment: { status: p.review ? 'REVIEW' : p.battle?.status || s03.status, version: draft || path.basename(film.path),
       url: draft ? base + 'preview?draft=' + draft : base + 's03' },
-    video: { ...await videoInfo(film, p.dir), width: film.width || t.width, height: film.height || t.height }, focus,
+    video: { ...video, width: film.width || t.width, height: film.height || t.height }, focus,
     reviewData: annotations.data, warnings: annotations.warning ? [annotations.warning] : [],
     decisions: p.battle || p.review ? reviewDecisions(p, t.revision) : {},
     mixUrl: (p.battle?.lossless_mix || p.review?.mix) &&
@@ -368,11 +372,26 @@ function prepareReferences(p) {
   return { kind: 'references', title: 'Three-angle corridor references', source, scene, revision: sha256 };
 }
 
+function failedOnLongRenderPath(previous) {
+  if (process.platform !== 'win32' || previous.kind !== 'edit' || previous.status !== 'failed' ||
+      previous.stage !== 'render' || typeof previous.job_path !== 'string' || typeof previous.error !== 'string') return false;
+  const timeline = path.join(path.dirname(previous.job_path), 'timeline.mlt');
+  return timeline.length >= 260 && previous.error.includes('Failed to load') && previous.error.includes(timeline);
+}
+
 function start(p, request) {
-  const id = hash(JSON.stringify(request)).slice(0, 32);
-  const dir = folder(p, 'runs', id);
-  const receipt = path.join(dir, 'request.json');
-  if (fs.existsSync(receipt)) return job(p, id);
+  const key = JSON.stringify(request);
+  let id = hash(key).slice(0, 32);
+  let dir = folder(p, 'runs', id);
+  let receipt = path.join(dir, 'request.json');
+  if (fs.existsSync(receipt)) {
+    const previous = job(p, id);
+    if (!failedOnLongRenderPath(previous)) return previous;
+    id = hash(key + '\nshort-render-path').slice(0, 32);
+    dir = folder(p, 'runs', id);
+    receipt = path.join(dir, 'request.json');
+    if (fs.existsSync(receipt)) return job(p, id);
+  }
   if (ids(p, 'runs', 'request.json').some(other => !terminal.has(job(p, other).status))) {
     throw problem(409, 'A local job is running. Wait for its result');
   }
@@ -392,7 +411,7 @@ function start(p, request) {
   return job(p, id);
 }
 
-function media(p, key, draft, runId) {
+async function media(p, key, draft, runId) {
   if (key.startsWith('task-')) {
     const result = task(p, key.slice(5)).result;
     if (!result) throw problem(404, 'The task result has not been attached');
@@ -417,7 +436,8 @@ function media(p, key, draft, runId) {
   const thumbnail = /^thumb-(\d+)-(\d+)$/.exec(key);
   if (thumbnail) {
     const t = timeline(p, draft);
-    const row = readReview(p, t).data?.clips.find(row => row.track === Number(thumbnail[1]) && row.clip === Number(thumbnail[2]));
+    const previewSha256 = await verifiedMediaHash(existing(p.dir, reviewVideoPaths(p).s03));
+    const row = readReview(p, t, previewSha256).data?.clips.find(row => row.track === Number(thumbnail[1]) && row.clip === Number(thumbnail[2]));
     if (!row?.thumbnail) throw problem(404, 'Thumbnail is not registered');
     const file = existing(p.dir, row.thumbnail.path);
     if (revision(file) !== row.thumbnail.sha256) throw problem(409, 'Thumbnail does not match its record');
@@ -504,7 +524,7 @@ async function handle(req, res, url, json, readBody) {
   const p = project(id);
   if (!action && method === 'GET') return json(res, 200, await summary(p, draft));
   if (action === 'media' && key && !sub && ['GET', 'HEAD'].includes(method)) {
-    return stream(req, res, media(p, key, draft, url.searchParams.get('run')));
+    return stream(req, res, await media(p, key, draft, url.searchParams.get('run')));
   }
   if (action === 'jobs' && key && !sub && method === 'GET') return json(res, 200, job(p, key));
   if (action === 'tasks' && key && !sub && method === 'GET') return json(res, 200, task(p, key));

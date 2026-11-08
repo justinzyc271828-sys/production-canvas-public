@@ -3,11 +3,16 @@ import asyncio
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+WINDOWS_MAX_PATH = 260
 
 
 def read(path):
@@ -38,7 +43,86 @@ async def call(session, name, args=None):
     return value
 
 
-async def edit_preview(session, run, request, publish):
+def needs_short_render_path(directory):
+    render_file = directory / "kdenlive-mcp-jobs" / ("0" * 32) / "render-incomplete.mp4"
+    return os.name == "nt" and len(str(render_file).encode("utf-16-le")) // 2 >= WINDOWS_MAX_PATH
+
+
+def publish_staged_preview(run, movie, receipt, revision):
+    if receipt.get("source_revision") != revision or Path(receipt["output"]).resolve() != movie:
+        raise RuntimeError("The rendered preview does not match the draft")
+    preview = run / "preview.mp4"
+    target = tempfile.NamedTemporaryFile(dir=run, prefix="preview-", suffix=".pending", delete=False)
+    pending = Path(target.name)
+    try:
+        with target, movie.open("rb") as source:
+            shutil.copyfileobj(source, target, 1024 * 1024)
+        sha256 = digest(pending)
+        if sha256 != receipt.get("sha256"):
+            raise RuntimeError("The rendered preview does not match its receipt")
+        with (run / "render-receipt.json").open("x", encoding="utf-8") as handle:
+            json.dump({**receipt, "output": str(preview)}, handle)
+        os.link(pending, preview)
+        return sha256
+    finally:
+        pending.unlink()
+
+
+async def render_preview(session, run, stage, options, publish):
+    staged = stage != run
+    movie = stage / "preview.mp4"
+    publish("running", "starting-render")
+    started = await call(session, "start_render", {
+        **options, "output_path": str(movie), "quality": "preview"
+    })
+    job_path = started["job_path"]
+    location = {"staging_directory": str(stage)} if staged else {"job_path": job_path}
+    publish("running", "render", **location)
+    unconfirmed = "Render still unconfirmed. Inspect the stored job before retrying."
+    for attempt in range(7200 if staged else 180):
+        state = await call(session, "get_render_status", {"job_path": job_path})
+        phase = state.get("state") or state.get("status")
+        if phase == "completed":
+            revision = digest(run / "draft.kdenlive-cli.json")
+            if (not movie.is_file() or state.get("full_decode") != "passed" or
+                    revision != options["expected_revision"]):
+                raise RuntimeError("Kdenlive did not verify the preview")
+            sha256 = publish_staged_preview(run, movie, state, revision) if staged else digest(movie)
+            publish("completed", "review", revision=revision, preview_sha256=sha256, error=None)
+            return True
+        if phase in ("failed", "error", "cancelled"):
+            raise RuntimeError(str(state.get("error") or state))
+        if staged and attempt == 179:
+            publish("attention", "render", error=unconfirmed)
+        await asyncio.sleep(2)
+    publish("attention", "render", error=unconfirmed)
+    return False
+
+
+async def render_at_short_path(session, connection, run, options, publish):
+    roots = (await call(session, "get_status")).get("workspace_roots")
+    if not isinstance(roots, list) or not roots or not all(
+        isinstance(root, str) and Path(root).is_absolute() for root in roots
+    ):
+        raise RuntimeError("The Kdenlive adapter must report its workspace roots to render from a deep path")
+    parent = Path(tempfile.gettempdir()).resolve()
+    stage = Path(tempfile.mkdtemp(prefix="canvas-render-", dir=parent)).resolve()
+    if stage.parent != parent:
+        raise RuntimeError("Unexpected Kdenlive staging directory")
+    if needs_short_render_path(stage):
+        stage.rmdir()
+        raise RuntimeError("Choose a shorter Windows temporary directory for Kdenlive rendering")
+    env = {**(connection.get("env") or {}), "KDENLIVE_MCP_ROOTS": os.pathsep.join([*roots, str(stage)])}
+    parameters = StdioServerParameters(**{**connection, "env": env})
+    async with stdio_client(parameters) as (incoming, outgoing):
+        async with ClientSession(incoming, outgoing) as renderer:
+            await renderer.initialize()
+            completed = await render_preview(renderer, run, stage, options, publish)
+    if completed and stage.resolve() == stage:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+async def edit_preview(session, connection, run, request, publish):
     source = Path(request["source"])
     project = run / "draft.kdenlive-cli.json"
     params = {"project_path": str(source), "expected_revision": request["revision"]}
@@ -53,27 +137,10 @@ async def edit_preview(session, run, request, publish):
         edited = await call(session, tool, {**options, **args})
         options["expected_revision"] = edited.get("revision") or digest(project)
     await call(session, "export_project", {**options, "output_path": str(run / "draft.kdenlive")})
-    publish("running", "starting-render")
-    started = await call(session, "start_render", {
-        **options, "output_path": str(run / "preview.mp4"), "quality": "preview"
-    })
-    job_path = started["job_path"]
-    publish("running", "render", job_path=job_path)
-    for _ in range(180):
-        state = await call(session, "get_render_status", {"job_path": job_path})
-        phase = state.get("state") or state.get("status")
-        if phase == "completed":
-            movie = run / "preview.mp4"
-            if not movie.is_file() or state.get("full_decode") != "passed":
-                raise RuntimeError("Kdenlive did not verify the preview")
-            publish("completed", "review", job_path=job_path, revision=digest(project),
-                    preview_sha256=digest(movie))
-            return
-        if phase in ("failed", "error", "cancelled"):
-            raise RuntimeError(str(state.get("error") or state))
-        await asyncio.sleep(2)
-    publish("attention", "render", job_path=job_path,
-            error="Render still unconfirmed. Inspect the stored job before retrying.")
+    if needs_short_render_path(run):
+        await render_at_short_path(session, connection, run, options, publish)
+    else:
+        await render_preview(session, run, run, options, publish)
 
 
 async def render_refs(session, run, request, publish):
@@ -143,7 +210,7 @@ async def main():
             async with ClientSession(incoming, outgoing) as session:
                 await session.initialize()
                 if kind == "edit":
-                    await edit_preview(session, run, request, publish)
+                    await edit_preview(session, connection, run, request, publish)
                 elif kind == "references":
                     await render_refs(session, run, request, publish)
                 else:

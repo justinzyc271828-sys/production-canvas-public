@@ -1,24 +1,27 @@
-# Production Canvas 1.6 release candidate
+# Production Canvas on Windows
 
-The Windows x64 candidate uses a Rust/Tauri desktop host and the system WebView2
+The Windows x64 package uses a Rust/Tauri desktop host and the system WebView2
 Runtime. The portable plugin directory carries its own Node.js review service
 runtime and isolated Python MCP adapter. The existing manifest, timeline and
 frame annotation formats are shared with the Electron edition.
 
-## Open the candidate
+## Open the package
 
-Extract the complete candidate package. Open desktop/production-canvas.exe for
+Extract the complete package. Open `desktop/production-canvas.exe` for
 the Chinese interface or run scripts/start-canvas.ps1 for the English plugin
 entry. The launcher also accepts -Language zh-CN and -ProfileDirectory.
-The candidate is unsigned. The Windows configuration stays under a separate candidate profile. A second
-launch with a matching profile forwards an exact local manifest or MP4 path
-to the existing window.
+The executable is unsigned. The Rust/Tauri desktop uses its own profile. A
+second launch with a matching profile forwards an exact local manifest or MP4
+path to the existing window.
 
 The Project menu opens local film folders, manifests, workbench tool settings,
 and bound review videos. The storyboard link opens a protected text window.
 ComfyUI inspection uses a separate WebView and allows only local reads.
 Kdenlive draft rendering and the vetted local reference workflow use the
-existing Python worker and the project tool configuration.
+existing Python worker and the project tool configuration. On deep Windows
+paths, the worker renders into a short temporary directory and places the
+verified MP4 back in the project. This uses the workspace roots reported by
+the configured Kdenlive MCP server.
 
 ## Build
 

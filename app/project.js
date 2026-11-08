@@ -248,7 +248,7 @@ function readTimeline(file) {
   return { source: file, native, bin, tracks, fps, frames: end, width, height, revision: hash(bytes), transitions: data.transitions || [] };
 }
 
-function readReview(project, timeline) {
+function readReview(project, timeline, actualPreviewSha256) {
   const legacy = 'edit/production-canvas/review-data.json';
   const file = project.review?.review || project.manifest.production_canvas?.review ||
     (project.battle && fs.existsSync(path.join(project.dir, legacy)) ? legacy : null);
@@ -260,8 +260,9 @@ function readReview(project, timeline) {
       throw problem(key + ' requires a SHA-256 hash');
     }
   }
+  const previewSha256 = actualPreviewSha256 ?? project.review?.video.sha256 ?? project.battle?.current_candidate.sha256;
   if ((record.timelineRevision && record.timelineRevision !== timeline.revision) ||
-      (record.previewSha256 && record.previewSha256 !== (project.review?.video.sha256 || project.battle?.current_candidate.sha256))) {
+      (record.previewSha256 && record.previewSha256 !== previewSha256)) {
     return { data: null, warning: 'Review annotations belong to another edit revision. Update the project annotation file.' };
   }
   for (const name of ['chapters', 'shots', 'cues', 'sounds', 'clips']) {

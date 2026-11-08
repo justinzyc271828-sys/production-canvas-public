@@ -111,8 +111,8 @@ async function verify() {
       return address;
     });
     storyboard = await connect(app, url => url === storyboardAddress);
-    const text = await storyboard.evaluate(() => document.body.textContent);
-    assert.ok(text.includes(fs.readFileSync(path.join(project, 'sample-storyboard.md'), 'utf8').trim().slice(0, 20)));
+    const expected = fs.readFileSync(path.join(project, 'sample-storyboard.md'), 'utf8').trim().slice(0, 20);
+    await until(async () => (await storyboard.evaluate(() => document.body?.textContent || '')).includes(expected), 12000);
 
     const panel = await page.evaluate(async () => {
       await toggleComfy(true);
@@ -143,6 +143,14 @@ async function verify() {
     const preview = path.join(run, 'preview.mp4');
     assert.equal(hash(preview), receipt.preview_sha256);
     assert.equal(hash(timelinePath), original);
+    const defaultRenderPath = path.join(run, 'kdenlive-mcp-jobs', '0'.repeat(32), 'render-incomplete.mp4');
+    const staged = process.platform === 'win32' && defaultRenderPath.length >= 260;
+    if (staged) {
+      const renderReceipt = JSON.parse(fs.readFileSync(path.join(run, 'render-receipt.json'), 'utf8'));
+      assert.equal(renderReceipt.full_decode, 'passed');
+      assert.equal(renderReceipt.output, preview);
+      assert.equal(renderReceipt.sha256, hash(preview));
+    }
     const draft = await page.evaluate(async id => {
       await openDraft(id);
       await mcpWaitForFrame(0, projectEpoch);
@@ -155,7 +163,8 @@ async function verify() {
     return { localizedWindow: locale.lang, storyboard: true,
       comfy: { readOnlyRequests: true, verifiedNodes: graph.nodes.length, rejectedWriteStatus: 403, returnedToFrame: returned.frame },
       kdenlive: { worker: workerMode + ' Python with the configured local adapter', verifiedPreviewSha256: receipt.preview_sha256,
-        previewBytes: fs.statSync(preview).size, untouchedInputTimeline: true, draftOpened: true } };
+        previewBytes: fs.statSync(preview).size, defaultRenderPathCharacters: defaultRenderPath.length,
+        staged, untouchedInputTimeline: true, draftOpened: true } };
   } finally {
     storyboard?.close();
     page?.close();

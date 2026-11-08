@@ -80,8 +80,17 @@ async function trial(kind, executable, index) {
   const app = await launch({ kind, executable: path.resolve(executable), profile, runtime: process.env.CANVAS_PILOT_RUNTIME, benchmark: true });
   let page;
   try {
-    page = await connect(app);
-    const startupResult = await page.evaluate(startup, [], 25000);
+    let startupResult;
+    for (let attempt = 0; !startupResult; attempt++) {
+      try {
+        page = await connect(app);
+        startupResult = await page.evaluate(startup, [], 25000);
+      } catch (error) {
+        page?.close();
+        page = null;
+        if (attempt >= 4 || !/Execution context was destroyed|Cannot find context/i.test(error.message)) throw error;
+      }
+    }
     const seekMs = await page.evaluate(measureSeeks, [], 30000);
     const row = {
       kind, version: session(app).version, build: session(app).build_commit, index,

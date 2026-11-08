@@ -43,12 +43,12 @@ for (const [name, record] of Object.entries(lock.packages)) {
 }
 
 for (const file of ['plugin.json', 'mcp.json', 'privacy.md', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'mcp/server.py', 'mcp/requirements.txt',
+  'mcp/README.md', 'docs/project-format.md', 'docs/sample-review.png', 'docs/tauri-candidate.md', 'docs/verification.md',
   'scripts/start-canvas.ps1', 'scripts/start-mcp.ps1', 'assets/icon.png', 'assets/screenshot-1.png', 'skills/production-canvas/SKILL.md']) {
   copy(source(file), path.join(packageRoot, file));
 }
 copy(source('demo'), path.join(packageRoot, 'sample'));
 copy(source('packaging/PLUGIN_THIRD_PARTY_NOTICES.md'), path.join(packageRoot, 'runtime', 'PYTHON-NOTICES.md'));
-copy(source('docs/tauri-candidate.md'), path.join(packageRoot, 'docs', 'tauri-candidate.md'));
 copy(source('scripts/switch-local-canvas.ps1'), path.join(packageRoot, 'scripts', 'switch-local-canvas.ps1'));
 
 const metadata = JSON.parse(fs.readFileSync(cargoMetadata, 'utf8').replace(/^\uFEFF/, ''));

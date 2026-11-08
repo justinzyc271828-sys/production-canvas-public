@@ -162,6 +162,10 @@ and excludes those editorial records. It does not hide saved directions.
 Without this optional hash, the metadata is the owner's declaration for the
 current edit. Validate its clip indices whenever the edit changes.
 
+Add `previewSha256` to the editorial file to bind its metadata to the exact
+review MP4. The Canvas checks this against the file's actual SHA-256, including
+when the manifest omits its optional `video.sha256` field.
+
 The sample's review.json contains a revision binding. To try the equivalent
 JSON timeline instead, update the timeline path and this hash together.
 

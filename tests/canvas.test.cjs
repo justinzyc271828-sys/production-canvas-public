@@ -40,6 +40,37 @@ test('generic API returns project tracks, labels, editorial rows and waveform so
   assert.ok(value.mixUrl);
 });
 
+test('review metadata and thumbnails are bound to the actual video when the manifest omits its hash', async t => {
+  const root = fixture(t);
+  const manifestFile = path.join(root, 'project.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestFile));
+  const video = path.join(root, manifest.video.path);
+  const reviewFile = path.join(root, manifest.review);
+  const review = JSON.parse(fs.readFileSync(reviewFile));
+  review.previewSha256 = createHash('sha256').update(fs.readFileSync(video)).digest('hex');
+  fs.writeFileSync(reviewFile, JSON.stringify(review));
+  delete manifest.video.sha256;
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+
+  const head = async url => {
+    let status;
+    await canvas.handle({ method: 'HEAD', headers: { host: '127.0.0.1' } },
+      { writeHead: value => { status = value; }, end: () => {} }, new URL(url, 'http://127.0.0.1'));
+    return status;
+  };
+  const { value } = await call();
+  assert.equal(value.reviewData.chapters.length, 4);
+  assert.deepEqual(value.warnings, []);
+  const thumbnail = value.tracks[0].clips[5].thumbnail;
+  assert.equal(await head(thumbnail), 200);
+
+  fs.appendFileSync(video, 'Different review video bytes');
+  const changed = (await call()).value;
+  assert.equal(changed.reviewData, null);
+  assert.match(changed.warnings[0], /another edit revision/);
+  await assert.rejects(head(thumbnail), /Thumbnail is not registered/);
+});
+
 test('directions persist once and conflicting retries do not overwrite the brief', async t => {
   const root = fixture(t), summary = (await call()).value;
   const brief = note(summary);

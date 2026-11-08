@@ -2275,7 +2275,7 @@ dependencies = [
 
 [[package]]
 name = "production-canvas"
-version = "1.6.0-rc.2"
+version = "1.6.0"
 dependencies = [
  "base64 0.22.1",
  "rfd",
