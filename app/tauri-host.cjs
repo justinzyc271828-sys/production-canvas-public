@@ -205,7 +205,7 @@ function inspectComfy(project, node) {
       await callHost('comfy-open', { url: inspectionOrigin }, 20000);
       // The frontend initializes while its WebView is visible.
       await callHost('comfy-show');
-      const loaded = await callHost('comfy-evaluate', { script: loadGraphScript(graph, inspection) }, 36000);
+      const loaded = await callHost('comfy-evaluate', { script: loadGraphScript(graph, inspection) }, 85000);
       if (loaded.id !== record.id || loaded.nodes !== graph.nodes.length) {
         throw Error(label('Loaded ComfyUI nodes do not match the saved project', '加载的 ComfyUI 节点与项目记录不一致'));
       }

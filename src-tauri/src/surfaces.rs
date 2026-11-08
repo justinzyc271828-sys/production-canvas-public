@@ -135,20 +135,20 @@ fn wait_for_inspection(
     query: &str,
     started: mpsc::Receiver<String>,
 ) -> std::result::Result<Value, String> {
-    let timeout = Duration::from_secs(3);
-    if started.recv_timeout(timeout).as_deref() != Ok("true") {
+    if started.recv_timeout(Duration::from_secs(10)).as_deref() != Ok("true") {
         return Err("The ComfyUI view did not start inspection code".to_owned());
     }
-    let deadline = Instant::now() + Duration::from_secs(29);
+    let deadline = Instant::now() + Duration::from_secs(70);
     while Instant::now() < deadline {
         let (send, response) = mpsc::channel();
         view.eval_with_callback(query, move |value| {
             let _ = send.send(value);
         })
         .map_err(|error| error.to_string())?;
-        let json = response
-            .recv_timeout(timeout)
-            .map_err(|_| "The ComfyUI view stopped responding".to_owned())?;
+        let budget = deadline.saturating_duration_since(Instant::now());
+        let Ok(json) = response.recv_timeout(budget.min(Duration::from_secs(10))) else {
+            continue;
+        };
         let result = serde_json::from_str::<Value>(&json).map_err(|error| error.to_string())?;
         if let Some(error) = result["error"].as_str() {
             return Err(error.to_owned());
@@ -269,17 +269,12 @@ impl Surfaces {
         view.eval_with_callback(script, move |response| {
             let _ = acknowledge.send(response);
         })?;
-        let query = format!(
-            r#"(() => {{
-            const result = globalThis[{key}];
-            if (!result) return null;
-            delete globalThis[{key}];
-            return result;
-        }})()"#
-        );
+        let query = format!("globalThis[{key}] ?? null");
+        let clear = format!("delete globalThis[{key}]");
         let (pipe, id) = (self.pipe.clone(), id.to_owned());
         thread::spawn(move || {
             let result = wait_for_inspection(&view, &query, started);
+            let _ = view.eval(clear);
             pipe.reply(&id, result);
         });
         Ok(())
