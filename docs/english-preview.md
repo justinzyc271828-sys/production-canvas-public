@@ -1,5 +1,9 @@
 # English preview provenance
 
+For the current Windows x64 ZIP and checksums, use the
+[latest Production Canvas release](https://github.com/justinzyc271828-sys/production-canvas-public/releases/latest).
+This page records the earlier English preview.
+
 Release `v0.2.0-preview.1-english` contains plugin version `0.2.0-preview.1` and
 desktop version `1.5.1-english.1`. Its ZIP SHA-256 is
 `b1094b24486508a643dac19ae03ec0235dfc25c5e522e18196c5bca05ab44eb0`.
@@ -24,9 +28,9 @@ and each relative path is followed by one NUL byte before its file content.
 
 The exact historical recipe is preserved as
 `packaging/archive-build-recipe.cjs`. It records the original preparation-folder
-layout and is provided for provenance. For a new source build, install the pinned
-dependencies and use `npm run pack:win` from a clean source commit. New builds
-record their own commit identity. The historical preview additionally included
+layout and is provided for provenance. The Electron baseline can be rebuilt
+with the pinned dependencies and `npm run pack:win` from a clean source commit.
+The historical preview additionally included
 only the `en-US` Electron locale and applied the equivalent Unicode escapes
 listed in `packaging/source-normalization.json` to dependency sources.
 
@@ -34,10 +38,9 @@ listed in `packaging/source-normalization.json` to dependency sources.
 runtime notices distributed in the ZIP are also preserved as
 `packaging/PLUGIN_THIRD_PARTY_NOTICES.md`.
 
-The source checkout obtains portable binaries and the isolated Python runtime
-through the release ZIP. Extract that complete ZIP when installing the local
-plugin. Source development can use `npm start` and the Python environment
-described in `mcp/README.md`.
+The English preview ZIP included the portable binaries, isolated Python
+runtime, and local plugin. The current package and its launch instructions
+are listed in the [Windows guide](tauri-candidate.md).
 
 ## Verified scope
 

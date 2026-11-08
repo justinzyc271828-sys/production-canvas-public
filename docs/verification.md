@@ -49,25 +49,40 @@ reuse of one window, focus exports, restart restoration, and returning to the
 saved direction's exact frame. Its results go to release/opening-verification.
 The fixtures contain only copies of the bundled synthetic media.
 For a packaged EXE, this also opens a second isolated profile, closes it,
-then reloads the first profile to check that portable extraction directories
-are independent. The pinned builder uses `portable.unpackDirName: true`
-for a per-launch directory.
+then reloads the first profile to check that their review sessions are
+independent. The Electron baseline uses `portable.unpackDirName: true`
+for a separate extraction directory on each launch.
 
 Windows CI runs these commands for main-branch pushes and pull requests.
 It uploads only the synthetic verification report. It has no production
 project binding, account secret or ComfyUI service.
 
-## Packaged verification
+## Verify the Windows release package
 
-Packaging requires a clean committed source tree. The executable embeds the
-full commit hash. Release artifacts include the repository license and third-party notices.
+Download the Windows x64 ZIP and its checksums from the
+[latest Production Canvas release](https://github.com/justinzyc271828-sys/production-canvas-public/releases/latest).
+Verify the ZIP hash and extract the complete archive to `release/package-check`.
+Run the file-opening suite from the source checkout in a fresh PowerShell
+session. The build receipt supplies the expected commit and EXE hash.
 
 ```powershell
-npm run pack:win
-$env:CANVAS_EXECUTABLE = (Resolve-Path ./dist/ProductionCanvas-1.5.1-english.1-win-x64.exe).Path
-npm run verify:sample
+$package = (Resolve-Path .\release\package-check\production-canvas).Path
+$receipt = Get-Content -LiteralPath (Join-Path $package 'build-receipt.json') -Raw | ConvertFrom-Json
+$exe = Join-Path $package 'desktop\production-canvas.exe'
+if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $receipt.executableSha256) {
+    throw 'The executable does not match the build receipt.'
+}
+$env:CANVAS_EXECUTABLE = $exe
+$env:CANVAS_EXPECTED_BUILD = $receipt.commit
 npm run verify:opening
 ```
+
+Use the [Windows packaging guide](tauri-candidate.md) to build the Rust/Tauri
+package from a clean source commit. For frame-by-frame comparison of the
+packaged desktop, supply the Electron baseline EXE and the Tauri EXE to
+`npm run verify:tauri -- <electron-exe> <tauri-exe> release/tauri-sample.json`.
+
+## Electron baseline verification
 
 Set CANVAS_CAPTURE=1 to capture successful window checkpoints. Capture is
 optional because some Windows desktop sessions return UnknownVizError.
@@ -81,7 +96,7 @@ A failed check makes the packaging command fail.
 When changing Windows icons, also check an actual associated MP4 in Explorer.
 Use the application's own DefaultIcon registration and a shell association
 refresh. A correct desktop shortcut icon alone does not verify file icons.
-After signing or any separate local build, run both suites again through
+After signing or rebuilding the Electron baseline, run both suites again through
 CANVAS_EXECUTABLE and set CANVAS_EXPECTED_BUILD to the expected embedded
 identity before updating a shortcut, file association target or release asset.
 
