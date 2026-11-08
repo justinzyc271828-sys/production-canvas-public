@@ -1,0 +1,10 @@
+{
+  "productName": "Production Canvas",
+  "version": "1.6.0-rc.1",
+  "identifier": "local.production-canvas.desktop.rust",
+  "app": {
+    "windows": [],
+    "security": { "capabilities": [] }
+  },
+  "bundle": { "active": false, "icon": ["../app/public/studio-mark.ico"] }
+}

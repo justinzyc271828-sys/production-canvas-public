@@ -7,3 +7,5 @@ canvas-settings.json
 canvas-tools.json
 __pycache__/
 **/.production-canvas/
+/src-tauri/target/
+/src-tauri/gen/

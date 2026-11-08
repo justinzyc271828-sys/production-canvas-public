@@ -990,4 +990,10 @@ window.productionCanvasMcp = async command => {
   return mcpWaitForFrame(location.frame, epoch);
 };
 
+$('storyboard').addEventListener('click', event => {
+  if (window.productionCanvasHost !== 'tauri') return;
+  event.preventDefault();
+  request('/desktop/storyboard', { project }).catch(error => tell(error.message, true));
+});
+
 document.addEventListener('DOMContentLoaded', () => boot(params.get('view')).catch(error => tell(error.message, true)));

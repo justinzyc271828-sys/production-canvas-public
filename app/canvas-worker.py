@@ -25,10 +25,10 @@ def digest(path):
 
 async def call(session, name, args=None):
     result = await session.call_tool(name, args or {})
-    if result.is_error:
+    if result.isError:
         raise RuntimeError(" ".join(part.text for part in result.content if part.type == "text"))
-    if result.structured_content:
-        value = result.structured_content
+    if result.structuredContent:
+        value = result.structuredContent
     else:
         value = json.loads(next(part.text for part in result.content if part.type == "text"))
     if isinstance(value.get("result"), dict) and len(value) == 1:
@@ -150,7 +150,10 @@ async def main():
                     raise ValueError("Unsupported job kind")
     except Exception as error:
         if state.get("status") != "completed":
-            publish("failed", state.get("stage", "connect"), error=str(error)[:1200])
+            cause = error
+            while isinstance(cause, BaseExceptionGroup) and len(cause.exceptions) == 1:
+                cause = cause.exceptions[0]
+            publish("failed", state.get("stage", "connect"), error=str(cause)[:1200])
         raise
 
 

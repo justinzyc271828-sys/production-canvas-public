@@ -21,7 +21,7 @@ function createBridge(options) {
   const origin = options.origin;
   const descriptor = {
     schema: 'production-canvas/mcp-session/v1', instance_id: instanceId,
-    pid: process.pid, origin, token, profile: options.profile,
+    pid: options.pid || process.pid, origin, token, profile: options.profile,
     version: options.version, build_commit: options.buildCommit || null,
     started_at: new Date().toISOString(), capabilities: commands,
   };
@@ -213,7 +213,7 @@ function createBridge(options) {
     if (!fs.existsSync(sessionFile)) return;
     try {
       const current = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
-      if (current.instance_id === instanceId && current.pid === process.pid && current.token === token) {
+      if (current.instance_id === instanceId && current.pid === descriptor.pid && current.token === token) {
         fs.unlinkSync(sessionFile);
       }
     } catch { /* A replaced or incomplete descriptor belongs to another writer. */ }

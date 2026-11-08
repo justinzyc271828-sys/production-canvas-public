@@ -1,6 +1,6 @@
 {
   "name": "production-canvas-desktop",
-  "version": "1.5.1-english.1",
+  "version": "1.6.0-rc.1",
   "description": "Frame-linked annotations and visual context for native Codex collaboration on video.",
   "author": "Justin Yao",
   "private": true,
@@ -8,13 +8,15 @@
   "scripts": {
     "start": "electron .",
     "pack:win": "node -e \"const { execFileSync } = require('node:child_process'); const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim(); if (git('status', '--porcelain')) throw Error('Commit source changes before packing'); const commit = git('rev-parse', 'HEAD'); execFileSync(process.execPath, [require.resolve('electron-builder/cli.js'), '--win', 'portable', '--x64', '--publish', 'never', '--config.extraMetadata.buildCommit=' + commit], { stdio: 'inherit' });\"",
-    "check": "node --check app/main.js && node --check app/canvas.js && node --check app/project.js && node --check app/public/canvas-ui.js && node --check app/public/review-timeline.js && node --check app/public/note-location.js && node --check scripts/build-demo.cjs && node --check scripts/verify-opening.cjs && npm test",
+    "check": "node --check app/main.js && node --check app/canvas.js && node --check app/project.js && node --check app/public/canvas-ui.js && node --check app/public/review-timeline.js && node --check app/public/note-location.js && node --check scripts/build-demo.cjs && node --check scripts/verify-opening.cjs && node --check app/tauri-host.cjs && node --check scripts/stage-tauri.cjs && node --check scripts/verify-tauri.cjs && node --check app/comfy-inspection.js && node --check app/desktop-support.js && node --check scripts/verify-tauri-integrations.cjs && npm test",
     "test": "node --test tests/*.test.cjs",
     "verify:sample": "node scripts/verify-sample.cjs",
     "verify:opening": "node scripts/verify-opening.cjs",
     "prepack:win": "npm run check && npm run verify:sample && npm run verify:opening",
     "postpack:win": "node scripts/verify-package.cjs",
-    "demo:build": "node scripts/build-demo.cjs"
+    "demo:build": "node scripts/build-demo.cjs",
+    "verify:tauri": "node scripts/verify-tauri.cjs",
+    "pack:tauri": "powershell.exe -NoProfile -File scripts/pack-tauri.ps1"
   },
   "devDependencies": {
     "electron": "45.2.1",
@@ -29,6 +31,8 @@
     },
     "files": [
       "app/main.js",
+      "app/comfy-inspection.js",
+      "app/desktop-support.js",
       "app/mcp-bridge.js",
       "app/canvas.js",
       "app/project.js",

@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const { loadProject, reviewVideoPaths, readTimeline, readReview, shotPattern, read, hash, inside, existing } = require('./project');
 
 let config;
+const mediaHashes = new Map();
 
 function configure(settings) {
   config = settings;
@@ -115,13 +116,39 @@ function timeline(p, draft) {
   return readTimeline(source);
 }
 
-function videoInfo(record, root) {
+async function mediaIdentity(file) {
+  const info = await fs.promises.stat(file, { bigint: true });
+  return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':');
+}
+
+async function verifiedMediaHash(file) {
+  if (!config.mediaHash) return revision(file);
+  const identity = await mediaIdentity(file);
+  const previous = mediaHashes.get(file);
+  if (previous?.identity === identity) return previous.digest;
+  const digest = (async () => {
+    const sha256 = await config.mediaHash(file);
+    if (identity !== await mediaIdentity(file)) throw problem(409, 'The video changed while being checked. Reopen the project.');
+    if (!/^[a-f0-9]{64}$/.test(sha256)) throw problem(500, 'Video verification did not complete');
+    return sha256;
+  })();
+  mediaHashes.set(file, { identity, digest });
+  if (mediaHashes.size > 64) mediaHashes.delete(mediaHashes.keys().next().value);
+  try {
+    return await digest;
+  } catch (error) {
+    if (mediaHashes.get(file)?.digest === digest) mediaHashes.delete(file);
+    throw error;
+  }
+}
+
+async function videoInfo(record, root) {
   return { version: path.basename(record.path), sha256: record.sha256,
-    actualSha256: root ? revision(existing(root, record.path)) : record.sha256,
+    actualSha256: root ? await verifiedMediaHash(existing(root, record.path)) : record.sha256,
     width: record.width, height: record.height, frames: record.frames };
 }
 
-function summary(p, draft) {
+async function summary(p, draft) {
   const t = timeline(p, draft);
   const base = '/api/canvas/projects/' + p.id + '/media/';
   const opening = p.manifest.active_s01_s02_revision;
@@ -145,12 +172,12 @@ function summary(p, draft) {
   let focus = Array.isArray(interval) && interval.length === 2 &&
     interval.every(Number.isFinite) && interval[0] >= 0 && interval[1] > interval[0] &&
     Math.round((interval[1] - interval[0]) * t.fps) === short.frames
-    ? { ...videoInfo(short, p.dir), start: Math.round(interval[0] * t.fps),
+    ? { ...await videoInfo(short, p.dir), start: Math.round(interval[0] * t.fps),
         end: Math.round(interval[1] * t.fps), url: base + 'battle-focus' } : null;
   if (p.review?.focus && !draft) {
     const record = p.review.focus;
     if (record.end > t.frames) throw problem(422, 'Focus range is outside the timeline');
-    focus = { ...videoInfo(record, p.dir), start: record.start, end: record.end, frames: record.end - record.start,
+    focus = { ...await videoInfo(record, p.dir), start: record.start, end: record.end, frames: record.end - record.start,
       width: record.width || t.width, height: record.height || t.height, label: record.label, url: base + 'battle-focus' };
   }
   let graph = p.battle?.canvas;
@@ -181,12 +208,12 @@ function summary(p, draft) {
   return {
     title: p.title, project: p.id, draft, tracks: t.tracks, fps: t.fps, frames: t.frames,
     transitions: t.transitions, revision: t.revision, timelineFile: path.relative(p.dir, t.source),
-    mediaBase: base, opening: opening ? { ...videoInfo(opening.video, p.dir), seconds: opening.seconds, markers: opening.review_markers,
+    mediaBase: base, opening: opening ? { ...await videoInfo(opening.video, p.dir), seconds: opening.seconds, markers: opening.review_markers,
       version: path.basename(opening.video.path), revision: hash(JSON.stringify(opening.video)),
       approved: opening.status === 'OWNER_APPROVED_FINAL', url: base + 'opening' } : null,
     segment: { status: p.review ? 'REVIEW' : p.battle?.status || s03.status, version: draft || path.basename(film.path),
       url: draft ? base + 'preview?draft=' + draft : base + 's03' },
-    video: { ...videoInfo(film, p.dir), width: film.width || t.width, height: film.height || t.height }, focus,
+    video: { ...await videoInfo(film, p.dir), width: film.width || t.width, height: film.height || t.height }, focus,
     reviewData: annotations.data, warnings: annotations.warning ? [annotations.warning] : [],
     decisions: p.battle || p.review ? reviewDecisions(p, t.revision) : {},
     mixUrl: (p.battle?.lossless_mix || p.review?.mix) &&
@@ -475,7 +502,7 @@ async function handle(req, res, url, json, readBody) {
   if (noun !== 'projects') throw problem(404, 'Canvas route does not exist');
   if (!id && method === 'GET') return json(res, 200, Object.entries(config.projects).map(([id, p]) => ({ id, title: p.title })));
   const p = project(id);
-  if (!action && method === 'GET') return json(res, 200, summary(p, draft));
+  if (!action && method === 'GET') return json(res, 200, await summary(p, draft));
   if (action === 'media' && key && !sub && ['GET', 'HEAD'].includes(method)) {
     return stream(req, res, media(p, key, draft, url.searchParams.get('run')));
   }

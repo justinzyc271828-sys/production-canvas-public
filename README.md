@@ -48,6 +48,12 @@ The [MCP reference](mcp/README.md) describes Python development setup, session
 discovery, version guards, and safe retries. The [workflow skill](skills/production-canvas/SKILL.md)
 describes the collaboration flow. Optional production tools are connected separately.
 
+## Build the Rust/Tauri candidate
+
+See the [Windows candidate guide](docs/tauri-candidate.md) for the standalone
+packaging command, the bilingual launchers, and the local migration and
+rollback procedure. The release link above points to the existing preview.
+
 ## Review your own film
 
 Keep a constant-frame-rate MP4 and its matching Kdenlive edit in one project

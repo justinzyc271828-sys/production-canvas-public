@@ -1,5 +1,6 @@
 param(
-    [string]$ProfileDirectory
+    [string]$ProfileDirectory,
+    [ValidateSet('en','zh-CN')][string]$Language = 'en'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,7 @@ $parameters = @{
     FilePath = $application
     WorkingDirectory = $pluginRoot
     WindowStyle = 'Hidden'
+    ArgumentList = '--language=' + $Language
 }
 if ($ProfileDirectory) {
     if (-not [IO.Path]::IsPathRooted($ProfileDirectory) -or [IO.Path]::GetPathRoot($ProfileDirectory).Length -lt 3) {
@@ -20,6 +22,6 @@ if ($ProfileDirectory) {
     if ($ProfileDirectory.Contains('"')) {
         throw 'ProfileDirectory must not contain a quote character.'
     }
-    $parameters.ArgumentList = '"--profile=' + $ProfileDirectory + '"'
+    $parameters.ArgumentList += ' "--profile=' + $ProfileDirectory + '"'
 }
 Start-Process @parameters

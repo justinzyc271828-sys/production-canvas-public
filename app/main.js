@@ -8,6 +8,8 @@ const { randomBytes } = require('node:crypto');
 const { buildCommit = null } = require('../package.json');
 const canvas = require('./canvas');
 const { createBridge } = require('./mcp-bridge');
+const { initializeDemo, localTools } = require('./desktop-support');
+const { comfyOrigin, readGraph, centerNodeScript, loadGraphScript } = require('./comfy-inspection');
 const { loadProject, videoArgument, findVideoProject, schema: projectSchema } = require('./project');
 
 app.setName('Production Canvas');
@@ -36,7 +38,6 @@ let origin;
 let comfyView;
 let comfyProject;
 let mcpBridge;
-const comfyOrigin = 'http://127.0.0.1:8188';
 
 const mime = {
   'index.html': 'text/html; charset=utf-8', 'canvas.css': 'text/css; charset=utf-8',
@@ -54,20 +55,6 @@ function save(file, value) {
   const pending = file + '.pending';
   fs.writeFileSync(pending, JSON.stringify(value, null, 2) + '\n');
   fs.renameSync(pending, file);
-}
-
-function initializeDemo() {
-  const previous = path.join(data, 'sample-project-illustrated');
-  if (fs.existsSync(path.join(previous, 'current-manifest.json'))) {
-    settings.projects['demo-v1'] = { title: 'Earlier sample and annotations', root: previous, manifest: 'current-manifest.json', demo: true };
-  }
-  const root = path.join(data, 'sample-project-v2');
-  if (!fs.existsSync(path.join(root, 'project.json'))) {
-    const stage = fs.mkdtempSync(path.join(data, 'sample-staging-'));
-    fs.cpSync(path.join(resources, 'demo'), stage, { recursive: true });
-    fs.renameSync(stage, root);
-  }
-  return { title: 'Frame Annotation Lab', root, manifest: 'project.json', demo: true };
 }
 
 function validateBinding(id, binding) {
@@ -89,21 +76,7 @@ function importWorkbench(file) {
     settings.projects[id] = validateBinding(id, { ...binding, root: path.resolve(base, binding.root) });
     settings.active = id;
   }
-  const tools = {};
-  if (typeof document.python === 'string' && path.isAbsolute(document.python)) tools.python = document.python;
-  for (const name of ['kdenlive', 'comfy']) {
-    const tool = document[name];
-    if (!tool || typeof tool.command !== 'string' || !path.isAbsolute(tool.command)) continue;
-    const entry = { command: tool.command };
-    if (tool.cwd && path.isAbsolute(tool.cwd)) entry.cwd = tool.cwd;
-    if (Array.isArray(tool.args) && tool.args.every(arg => typeof arg === 'string')) entry.args = tool.args;
-    if (name === 'comfy') {
-      const keys = ['COMFY_BIN', 'COMFY_NO_TELEMETRY', 'DO_NOT_TRACK', 'PYTHONUTF8', 'PYTHONIOENCODING'];
-      entry.env = Object.fromEntries(keys.filter(key => typeof tool.env?.[key] === 'string').map(key => [key, tool.env[key]]));
-      entry.env.COMFY_LOCAL_URL = 'http://127.0.0.1:8188';
-    }
-    tools[name] = entry;
-  }
+  const tools = localTools(document);
   if (Object.keys(tools).length) settings.tools = tools;
 }
 
@@ -215,20 +188,8 @@ function resizeComfy() {
 }
 
 async function centerComfyNode(view, node) {
-  if (!Number.isSafeInteger(node) || node < 1) return;
-  const source = function (id) {
-    const app = window.comfyAPI?.app?.app;
-    const target = app?.rootGraph?.getNodeById(id);
-    const canvas = app?.canvas;
-    if (!target || !canvas) return;
-    if (typeof canvas.centerOnNode === 'function') canvas.centerOnNode(target);
-    else if (canvas.ds) {
-      canvas.ds.offset[0] = canvas.canvas.width / (2 * canvas.ds.scale) - target.pos[0] - target.size[0] / 2;
-      canvas.ds.offset[1] = canvas.canvas.height / (2 * canvas.ds.scale) - target.pos[1] - target.size[1] / 2;
-      canvas.setDirty(true, true);
-    }
-  };
-  await view.webContents.executeJavaScript('(' + source.toString() + ')(' + node + ')');
+  const script = centerNodeScript(node);
+  if (script) await view.webContents.executeJavaScript(script);
 }
 
 async function showComfy(id, node) {
@@ -244,15 +205,7 @@ async function showComfy(id, node) {
     return { open: true };
   }
   const record = canvas.comfyWorkflow(id);
-  const url = comfyOrigin + '/api/userdata/' + encodeURIComponent('workflows/' + record.filename);
-  const response = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' }).catch(() => {
-    throw new Error('Local ComfyUI is unavailable. Start it and try again.');
-  });
-  if (!response.ok) throw new Error('The project workspace was not found in ComfyUI');
-  const graph = await response.json().catch(() => {
-    throw new Error('Local ComfyUI could not read the workflow. Check the service and try again.');
-  });
-  if (graph.id !== record.id || !Array.isArray(graph.nodes)) throw new Error('The ComfyUI workspace does not match the project manifest');
+  const graph = await readGraph(record);
 
   if (comfyView) {
     mainWindow.contentView.removeChildView(comfyView);
@@ -288,23 +241,7 @@ async function showComfy(id, node) {
   resizeComfy();
   try {
     await view.webContents.loadURL(comfyOrigin);
-    const loaded = await view.webContents.executeJavaScript(`(async () => {
-      const wait = () => new Promise(resolve => setTimeout(resolve, 150));
-      const until = Date.now() + 18000;
-      let app;
-      while (Date.now() < until) {
-        app = window.comfyAPI?.app?.app;
-        if (app?.canvas && app.rootGraph && typeof app.loadGraphData === 'function' &&
-          !document.getElementById('splash-loader')?.getClientRects().length) break;
-        await wait();
-      }
-      if (!app?.canvas || document.getElementById('splash-loader')?.getClientRects().length) {
-        throw Error('ComfyUI workspace load timed out');
-      }
-      const graph = ${JSON.stringify(graph)};
-      await app.loadGraphData(graph);
-      return { id: app.rootGraph.id, nodes: app.rootGraph._nodes.length };
-    })()`);
+    const loaded = await view.webContents.executeJavaScript(loadGraphScript(graph));
     if (loaded.id !== record.id || loaded.nodes !== graph.nodes.length) throw new Error('Loaded ComfyUI nodes do not match the saved project');
     await centerComfyNode(view, node);
     comfyProject = id;
@@ -437,7 +374,7 @@ async function verify() {
     if (!isTimelineView()) showSegment('s03');
     await wait(() => player?.readyState >= 2 && videoClock?.displayed != null && !videoClock.pending);
     if (model.mixUrl) await wait(() => Boolean(document.querySelector('.waveform')));
-    if (model.wholeFilm) await Promise.race([thumbnailQueue, new Promise(resolve => setTimeout(resolve, 4500))]);
+    if (model.wholeFilm) await Promise.race([(thumbnailSession?.queue || Promise.resolve()), new Promise(resolve => setTimeout(resolve, 4500))]);
     const bounds = id => {
       const { x, y, width, height } = $(id).getBoundingClientRect();
       return { x, y, width, height };
@@ -789,7 +726,7 @@ async function verify() {
       const standard = await inspect('standard');
       const expanded = await inspect('expanded');
       if (expanded.width <= standard.width) throw Error('Expanded timeline reused a smaller thumbnail');
-      await thumbnailQueue;
+      await (thumbnailSession?.queue || Promise.resolve());
       return { devicePixelRatio, standard, expanded };
     });
     await capture('thumbnail-detail', Boolean(captureDir));
@@ -933,7 +870,7 @@ const started = firstInstance && app.whenReady().then(async () => {
   const imported = argument('import-workbench');
   if (imported) importWorkbench(imported);
   if (!Object.hasOwn(settings.projects, settings.active)) settings.active = 'demo';
-  const demo = initializeDemo();
+  const demo = initializeDemo(data, resources, settings);
   const launchVideo = videoArgument(launchFiles, process.cwd());
   const view = launchVideo ? await selectVideo(launchVideo, demo) : undefined;
   applySettings(demo);

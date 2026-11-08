@@ -705,51 +705,97 @@ function waveform(node, clip, width, start, end) {
   }
   node.append(graph);
 }
-let thumbnailSource, thumbnailCache = new Map(), thumbnailQueue = Promise.resolve();
-function thumbnailAt(frame, width, height) {
+let thumbnailSession;
+
+function releaseThumbnailVideo(video) {
+  video.removeAttribute('src');
+  video.load();
+}
+
+function waitForThumbnailMedia(video, event, signal, start) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(Error('thumbnail cancelled'));
+    const finish = error => {
+      clearTimeout(timer);
+      video.removeEventListener(event, ready);
+      video.removeEventListener('error', fail);
+      signal.removeEventListener('abort', fail);
+      if (error) reject(error);
+      else resolve();
+    };
+    const ready = () => finish();
+    const fail = () => finish(Error('thumbnail unavailable'));
+    const timer = setTimeout(fail, 3500);
+    video.addEventListener(event, ready, { once: true });
+    video.addEventListener('error', fail, { once: true });
+    signal.addEventListener('abort', fail, { once: true });
+    try { start(); }
+    catch (error) { finish(error); }
+  });
+}
+
+function thumbnailAt(frame, width, height, needed = () => true) {
   const source = model.segment.url;
   const identity = source + '|' + model.video.actualSha256;
-  if (thumbnailSource !== identity) {
-    thumbnailSource = identity;
-    thumbnailCache = new Map();
+  if (thumbnailSession?.identity !== identity) {
+    if (thumbnailSession) {
+      thumbnailSession.controller.abort();
+      releaseThumbnailVideo(thumbnailSession.video);
+    }
+    const video = el('video', '', { preload: 'auto' });
+    video.muted = true;
+    thumbnailSession = {
+      identity, video, controller: new AbortController(), queue: Promise.resolve(),
+      cache: new Map(), pending: new Map()
+    };
   }
-  const key = [frame, width, height].join(':');
-  if (thumbnailCache.has(key)) return thumbnailCache.get(key);
+  const session = thumbnailSession;
+  const { video, controller: { signal }, cache, pending } = session;
   const time = frameMidpoint(frame);
-  const promise = thumbnailQueue.then(async () => {
-    if (thumbnailSource !== identity) return null;
-    const video = el('video');
+  width = Math.ceil(width / 16) * 16;
+  height = Math.ceil(height / 16) * 16;
+  const key = [frame, width, height].join(':');
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
+  const existing = pending.get(key);
+  if (existing) {
+    existing.watchers.push(needed);
+    return existing.promise;
+  }
+  const watchers = [needed];
+  const promise = session.queue.then(async () => {
+    if (signal.aborted || !watchers.some(watch => watch())) return null;
     try {
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(Error('thumbnail timeout')), 3000);
-        const finish = () => { clearTimeout(timeout); resolve(); };
-        video.onloadeddata = () => {
-          if (time) video.currentTime = Math.min(time, video.duration - .001);
-          else finish();
-        };
-        video.onseeked = finish;
-        video.onerror = () => { clearTimeout(timeout); reject(Error('thumbnail unavailable')); };
-        video.src = source;
-      });
+      if (video.readyState < 2) {
+        await waitForThumbnailMedia(video, 'loadeddata', signal, () => { video.src = source; });
+      }
+      const target = Math.min(time, video.duration - .001);
+      if (Math.abs(target - video.currentTime) > .000001) {
+        await waitForThumbnailMedia(video, 'seeked', signal, () => { video.currentTime = target; });
+      }
       const scale = Math.min(1, width / video.videoWidth, height / video.videoHeight);
       const original = el('canvas', '', { width: video.videoWidth, height: video.videoHeight });
       original.getContext('2d').drawImage(video, 0, 0);
-      if (scale === 1) return original;
-      const image = el('canvas', '', {
-        width: Math.max(1, Math.ceil(video.videoWidth * scale)),
-        height: Math.max(1, Math.ceil(video.videoHeight * scale))
-      });
-      const context = image.getContext('2d');
-      context.imageSmoothingQuality = 'high';
-      context.drawImage(original, 0, 0, image.width, image.height);
-      original.width = original.height = 1;
+      let image = original;
+      if (scale < 1) {
+        image = el('canvas', '', {
+          width: Math.max(1, Math.ceil(video.videoWidth * scale)),
+          height: Math.max(1, Math.ceil(video.videoHeight * scale))
+        });
+        const context = image.getContext('2d');
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(original, 0, 0, image.width, image.height);
+        original.width = original.height = 1;
+      }
+      cache.set(key, image);
+      if (cache.size > 100) cache.delete(cache.keys().next().value);
       return image;
-    } catch { return null; }
-    finally { video.removeAttribute('src'); video.load(); }
-  });
-  thumbnailQueue = promise;
-  thumbnailCache.set(key, promise);
-  if (thumbnailCache.size > 100) thumbnailCache.delete(thumbnailCache.keys().next().value);
+    } catch {
+      if (!signal.aborted) releaseThumbnailVideo(video);
+      return null;
+    }
+  }).finally(() => pending.delete(key));
+  pending.set(key, { watchers, promise });
+  session.queue = promise;
   return promise;
 }
 function appendThumbnails(node, clip, start, end, width) {
@@ -769,7 +815,7 @@ function appendThumbnails(node, clip, start, end, width) {
         if (!thumb.isConnected) return;
         const bounds = thumb.getBoundingClientRect();
         const scale = window.devicePixelRatio || 1;
-        thumbnailAt(frame, Math.ceil(bounds.width * scale), Math.ceil(bounds.height * scale)).then(image => {
+        thumbnailAt(frame, bounds.width * scale, bounds.height * scale, () => thumb.isConnected).then(image => {
           if (!image || !thumb.isConnected) return;
           thumb.width = image.width;
           thumb.height = image.height;
